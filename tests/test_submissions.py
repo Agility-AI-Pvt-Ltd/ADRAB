@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.models.models import DocumentType, Stakeholder
-from app.schemas.submission import AIScorecardResponse, ScoreBreakdown, AISuggestion
+from models.models import DocumentType, Stakeholder
+from schemas.submission import AIScorecardResponse, ScoreBreakdown, AISuggestion
 from tests.conftest import auth_headers
 
 MOCK_SCORECARD = AIScorecardResponse(

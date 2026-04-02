@@ -1,0 +1,238 @@
+"""
+AI Service
+Wraps the Anthropic Claude API for:
+  - Document review & scoring
+  - Draft generation in Founders' voice
+  - Draft refinement (shorter / warmer / more formal / add urgency)
+  - Rejection note generation
+"""
+
+import json
+from typing import Optional
+
+import anthropic
+
+from core.config import settings
+from core.exceptions import AIServiceError
+from core.logging import get_logger
+from models.models import DocumentType, Stakeholder
+from schemas.submission import AIScorecardResponse, RefineDraftRequest
+
+logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Default brand-voice system prompt (stored in DB; this is the seed value)
+# ---------------------------------------------------------------------------
+
+DEFAULT_SYSTEM_PROMPT = """
+You are the AI writing assistant for Lyfshilp Academy — an AI training organisation for
+school students, college students, teachers, and corporates.
+
+CREDENTIALS TO WEAVE IN WHERE RELEVANT:
+- Stanford Seed | GSB Top 100 South Asia
+- DPIIT Recognised Startup
+- Incubated at IIIT Allahabad
+- 38 partner schools, 6,000+ students impacted
+
+RESEARCH HOOKS (use naturally, not robotically):
+- Harvard Business School: AI boosts productivity 40%+
+- MIT Sloan research on AI-assisted learning
+
+SOCIAL PROOF SCHOOLS: DPS Mathura Road, DPS Gurugram, DPS Faridabad, DPS Dehradun,
+Mt. Carmel School Dwarka.
+
+TONE: Warm but authoritative. Aspirational. Never pushy or salesy. Credibility-first,
+not product-first. Always end with a low-friction CTA: 15-minute call, specific date/link,
+or a single clear next step.
+
+PRICING: Rs 2,999 + GST (Summer Programme), Rs 49,999 (Fellowship), Rs 10,000 (seat booking).
+
+FORBIDDEN PHRASES: "We are pleased to inform", "Kindly", "Please find attached",
+"Hope this email finds you well", "I am writing to", "We would like to".
+
+ALWAYS USE: Active voice, short punchy sentences, outcome-oriented language.
+
+EMOJI RULES:
+- Proposals, Cold Emails, Reply Emails, LinkedIn, Payment Follow-ups: NEVER use emoji.
+- WhatsApp to Parents: max 1-2 emoji only for warmth (e.g. ⭐ ✅).
+- WhatsApp to Students: max 2-3 emoji, never mid-sentence.
+- WhatsApp to Principals: AVOID emoji.
+- Ad Creative: context-dependent; only if platform calls for it.
+- Emoji go at the START of a bullet/line, never mid-sentence or after a full stop.
+""".strip()
+
+
+# ---------------------------------------------------------------------------
+# Prompts factory
+# ---------------------------------------------------------------------------
+
+class PromptBuilder:
+    """Builds structured prompts for each AI task."""
+
+    @staticmethod
+    def review(content: str, doc_type: str, stakeholder: str) -> str:
+        return f"""
+Review the following document for Lyfshilp Academy.
+
+DOCUMENT TYPE: {doc_type}
+STAKEHOLDER: {stakeholder}
+
+DOCUMENT CONTENT:
+---
+{content}
+---
+
+Score this document across 5 dimensions (20 points each = 100 total):
+1. tone_voice — Does it match Lyfshilp's warm-authoritative voice?
+2. format_structure — Is the expected structure (Hook→Proof→CTA) followed?
+3. stakeholder_fit — Is the language right for the selected stakeholder?
+4. missing_elements — Are credibility markers, CTA, dates, links present?
+5. improvement_scope — How much work is still needed?
+
+Also generate:
+- Up to 5 specific inline suggestions (original phrase → recommended replacement + reason)
+- A complete rewrite of the document in the Founders' voice
+
+Respond ONLY with valid JSON matching this exact structure:
+{{
+  "score": <0-100 integer>,
+  "dimensions": {{
+    "tone_voice": <0-20>,
+    "format_structure": <0-20>,
+    "stakeholder_fit": <0-20>,
+    "missing_elements": <0-20>,
+    "improvement_scope": <0-20>
+  }},
+  "suggestions": [
+    {{"original": "...", "replacement": "...", "reason": "..."}}
+  ],
+  "rewrite": "<full rewritten document as a plain string>"
+}}
+""".strip()
+
+    @staticmethod
+    def generate_draft(doc_type: str, stakeholder: str, context: dict) -> str:
+        context_lines = "\n".join(f"- {k}: {v}" for k, v in context.items())
+        return f"""
+Generate a complete {doc_type} for the stakeholder type: {stakeholder}.
+
+CONTEXT PROVIDED BY THE TEAM MEMBER:
+{context_lines}
+
+Write the full document in Shreya and Sharadd's voice following all brand guidelines.
+Respond ONLY with the document text — no preamble, no JSON, no markdown fences.
+""".strip()
+
+    @staticmethod
+    def refine_draft(content: str, action: str, doc_type: str, stakeholder: str) -> str:
+        action_instructions = {
+            "shorter": "Rewrite the document to be 30-40% shorter while keeping all key information.",
+            "more_formal": "Rewrite with a more formal tone appropriate for senior stakeholders.",
+            "warmer": "Rewrite with a warmer, more empathetic tone while keeping authority.",
+            "add_urgency": "Add a compelling urgency element (deadline, scarcity, opportunity cost) appropriate for this document type.",
+            "regenerate": "Generate a completely fresh alternative version of this document.",
+        }
+        instruction = action_instructions.get(action, "Improve this document.")
+        return f"""
+{instruction}
+
+DOCUMENT TYPE: {doc_type}
+STAKEHOLDER: {stakeholder}
+
+ORIGINAL DOCUMENT:
+---
+{content}
+---
+
+Respond ONLY with the revised document text — no preamble, no JSON, no markdown fences.
+""".strip()
+
+    @staticmethod
+    def rejection_note(scorecard: dict, doc_type: str) -> str:
+        return f"""
+Generate a concise, constructive rejection note for a team member whose {doc_type} document
+received this AI scorecard:
+
+{json.dumps(scorecard, indent=2)}
+
+The note must:
+- Be warm but direct
+- Name the 2-3 most important things to fix
+- Reference specific Lyfshilp brand guidelines (e.g. missing Stanford Seed credential, salesy opener, wrong tone for stakeholder)
+- End with an encouraging sentence
+
+Keep it under 100 words. Respond ONLY with the note text.
+""".strip()
+
+
+# ---------------------------------------------------------------------------
+# AI Service class
+# ---------------------------------------------------------------------------
+
+class AIService:
+    """Wraps Anthropic Claude API calls with structured input/output handling."""
+
+    def __init__(self, system_prompt: Optional[str] = None) -> None:
+        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+
+    # ── Public interface ──────────────────────────────────────────────────────
+
+    async def review_document(
+        self,
+        content: str,
+        doc_type: DocumentType,
+        stakeholder: Stakeholder,
+    ) -> AIScorecardResponse:
+        prompt = PromptBuilder.review(content, doc_type.value, stakeholder.value)
+        raw = await self._call(prompt)
+        return self._parse_scorecard(raw)
+
+    async def generate_draft(
+        self,
+        doc_type: DocumentType,
+        stakeholder: Stakeholder,
+        context: dict,
+    ) -> str:
+        prompt = PromptBuilder.generate_draft(doc_type.value, stakeholder.value, context)
+        return await self._call(prompt)
+
+    async def refine_draft(self, request: RefineDraftRequest) -> str:
+        prompt = PromptBuilder.refine_draft(
+            request.content,
+            request.action,
+            request.doc_type.value,
+            request.stakeholder.value,
+        )
+        return await self._call(prompt)
+
+    async def generate_rejection_note(self, scorecard: dict, doc_type: str) -> str:
+        prompt = PromptBuilder.rejection_note(scorecard, doc_type)
+        return await self._call(prompt)
+
+    # ── Private helpers ───────────────────────────────────────────────────────
+
+    async def _call(self, user_prompt: str) -> str:
+        try:
+            message = await self._client.messages.create(
+                model=settings.ANTHROPIC_MODEL,
+                max_tokens=settings.ANTHROPIC_MAX_TOKENS,
+                system=self._system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            return message.content[0].text
+        except anthropic.APIError as exc:
+            logger.error("Anthropic API error", extra={"error": str(exc)})
+            raise AIServiceError(f"AI service error: {exc}") from exc
+
+    @staticmethod
+    def _parse_scorecard(raw: str) -> AIScorecardResponse:
+        """Parse JSON scorecard response from Claude."""
+        try:
+            # Strip markdown fences if Claude adds them despite instructions
+            clean = raw.strip().removeprefix("```json").removesuffix("```").strip()
+            data = json.loads(clean)
+            return AIScorecardResponse(**data)
+        except (json.JSONDecodeError, ValueError, KeyError) as exc:
+            logger.error("Failed to parse AI scorecard", extra={"raw": raw[:500]})
+            raise AIServiceError("AI returned an unparseable scorecard.") from exc

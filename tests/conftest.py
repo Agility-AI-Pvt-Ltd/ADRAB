@@ -10,11 +10,11 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import settings
-from app.db.session import Base, get_db
-from app.main import app
-from app.models.models import User, UserRole, AuthProvider
-from app.core.security import hash_password, create_access_token
+from core.config import settings
+from db.session import Base, get_db
+from main import app
+from models.models import User, UserRole, AuthProvider
+from core.security import hash_password, create_access_token
 
 # Use a separate test database
 TEST_DB_URL = settings.DATABASE_URL.replace(f"/{settings.POSTGRES_DB}", "/lyfshilp_test")

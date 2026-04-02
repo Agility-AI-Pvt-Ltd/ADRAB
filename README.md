@@ -11,7 +11,6 @@ FastAPI backend for the Lyfshilp Academy AI Document Review & Approval Tool.
 | Framework | FastAPI + Uvicorn |
 | Database | PostgreSQL (async via asyncpg) |
 | ORM | SQLAlchemy 2 (async) |
-| Migrations | Alembic |
 | Auth | JWT (jose) + Google OAuth 2.0 |
 | AI | Anthropic Claude API |
 | File Storage | AWS S3 |
@@ -60,9 +59,6 @@ lyfshilp-backend/
 │   │   └── system_prompt_service.py
 │   └── utils/
 │       └── exception_handlers.py  # Global FastAPI error handlers
-├── alembic/
-│   ├── env.py
-│   └── versions/
 ├── tests/
 │   ├── conftest.py
 │   ├── test_auth.py
@@ -70,7 +66,6 @@ lyfshilp-backend/
 │   └── test_security.py
 ├── .env.example
 ├── requirements.txt
-├── alembic.ini
 └── pytest.ini
 ```
 
@@ -119,8 +114,7 @@ POSTGRES_PASSWORD=...
 # Create the database
 createdb lyfshilp
 
-# Run migrations
-alembic upgrade head
+# Tables are created automatically on app startup
 ```
 
 ### 5. Run
@@ -225,21 +219,6 @@ Score guide: 85-100 = approve as-is, 65-84 = minor edits, 40-64 = rewrite recomm
 | `founder` | Full access — review, approve, reject, settings |
 | `team_member` | Create/submit own documents, view own submissions |
 | `admin` | All founder permissions + user deactivation |
-
----
-
-## Database Migrations
-
-```bash
-# Generate a migration after model changes
-alembic revision --autogenerate -m "describe change"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback one step
-alembic downgrade -1
-```
 
 ---
 

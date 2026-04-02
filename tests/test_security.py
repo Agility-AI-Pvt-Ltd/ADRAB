@@ -1,8 +1,8 @@
 """Tests — Domain enforcement and security guards"""
 
 import pytest
-from app.core.security import enforce_allowed_domain
-from app.core.exceptions import ForbiddenError
+from core.security import enforce_allowed_domain
+from core.exceptions import ForbiddenError
 
 
 def test_allowed_domain_passes():
