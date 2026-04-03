@@ -32,3 +32,28 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DocumentGuidanceUpdate(BaseModel):
+    doc_type: str | None = None
+    title: str
+    description: str
+    key_requirements: str
+
+
+class DocumentGuidanceCreate(BaseModel):
+    doc_type: str
+    title: str
+    description: str
+    key_requirements: str
+
+
+class DocumentGuidanceResponse(BaseModel):
+    id: uuid.UUID
+    doc_type: str
+    title: str
+    description: str
+    key_requirements: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

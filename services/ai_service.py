@@ -1,6 +1,6 @@
 """
 AI Service
-Wraps the Anthropic Claude API for:
+Wraps the OpenAI API for:
   - Document review & scoring
   - Draft generation in Founders' voice
   - Draft refinement (shorter / warmer / more formal / add urgency)
@@ -10,12 +10,12 @@ Wraps the Anthropic Claude API for:
 import json
 from typing import Optional
 
-import anthropic
+from openai import AsyncOpenAI
 
 from core.config import settings
 from core.exceptions import AIServiceError
 from core.logging import get_logger
-from models.models import DocumentType, Stakeholder
+from models.models import Stakeholder
 from schemas.submission import AIScorecardResponse, RefineDraftRequest
 
 logger = get_logger(__name__)
@@ -70,12 +70,13 @@ class PromptBuilder:
     """Builds structured prompts for each AI task."""
 
     @staticmethod
-    def review(content: str, doc_type: str, stakeholder: str) -> str:
+    def review(content: str, doc_type: str, stakeholder: str, guidance: str) -> str:
         return f"""
 Review the following document for Lyfshilp Academy.
 
 DOCUMENT TYPE: {doc_type}
 STAKEHOLDER: {stakeholder}
+{guidance}
 
 DOCUMENT CONTENT:
 ---
@@ -111,10 +112,11 @@ Respond ONLY with valid JSON matching this exact structure:
 """.strip()
 
     @staticmethod
-    def generate_draft(doc_type: str, stakeholder: str, context: dict) -> str:
+    def generate_draft(doc_type: str, stakeholder: str, context: dict, guidance: str) -> str:
         context_lines = "\n".join(f"- {k}: {v}" for k, v in context.items())
         return f"""
 Generate a complete {doc_type} for the stakeholder type: {stakeholder}.
+{guidance}
 
 CONTEXT PROVIDED BY THE TEAM MEMBER:
 {context_lines}
@@ -124,7 +126,7 @@ Respond ONLY with the document text — no preamble, no JSON, no markdown fences
 """.strip()
 
     @staticmethod
-    def refine_draft(content: str, action: str, doc_type: str, stakeholder: str) -> str:
+    def refine_draft(content: str, action: str, doc_type: str, stakeholder: str, guidance: str) -> str:
         action_instructions = {
             "shorter": "Rewrite the document to be 30-40% shorter while keeping all key information.",
             "more_formal": "Rewrite with a more formal tone appropriate for senior stakeholders.",
@@ -138,6 +140,7 @@ Respond ONLY with the document text — no preamble, no JSON, no markdown fences
 
 DOCUMENT TYPE: {doc_type}
 STAKEHOLDER: {stakeholder}
+{guidance}
 
 ORIGINAL DOCUMENT:
 ---
@@ -170,10 +173,10 @@ Keep it under 100 words. Respond ONLY with the note text.
 # ---------------------------------------------------------------------------
 
 class AIService:
-    """Wraps Anthropic Claude API calls with structured input/output handling."""
+    """Wraps OpenAI API calls with structured input/output handling."""
 
     def __init__(self, system_prompt: Optional[str] = None) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -181,28 +184,31 @@ class AIService:
     async def review_document(
         self,
         content: str,
-        doc_type: DocumentType,
+        doc_type: str,
         stakeholder: Stakeholder,
+        guidance: str,
     ) -> AIScorecardResponse:
-        prompt = PromptBuilder.review(content, doc_type.value, stakeholder.value)
+        prompt = PromptBuilder.review(content, doc_type, stakeholder.value, guidance)
         raw = await self._call(prompt)
         return self._parse_scorecard(raw)
 
     async def generate_draft(
         self,
-        doc_type: DocumentType,
+        doc_type: str,
         stakeholder: Stakeholder,
         context: dict,
+        guidance: str,
     ) -> str:
-        prompt = PromptBuilder.generate_draft(doc_type.value, stakeholder.value, context)
+        prompt = PromptBuilder.generate_draft(doc_type, stakeholder.value, context, guidance)
         return await self._call(prompt)
 
-    async def refine_draft(self, request: RefineDraftRequest) -> str:
+    async def refine_draft(self, request: RefineDraftRequest, guidance: str) -> str:
         prompt = PromptBuilder.refine_draft(
             request.content,
             request.action,
-            request.doc_type.value,
+            request.doc_type,
             request.stakeholder.value,
+            guidance,
         )
         return await self._call(prompt)
 
@@ -214,22 +220,27 @@ class AIService:
 
     async def _call(self, user_prompt: str) -> str:
         try:
-            message = await self._client.messages.create(
-                model=settings.ANTHROPIC_MODEL,
-                max_tokens=settings.ANTHROPIC_MAX_TOKENS,
-                system=self._system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
+            response = await self._client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
+                messages=[
+                    {"role": "system", "content": self._system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
             )
-            return message.content[0].text
-        except anthropic.APIError as exc:
-            logger.error("Anthropic API error", extra={"error": str(exc)})
+            content = response.choices[0].message.content
+            if not content:
+                raise AIServiceError("AI returned an empty response.")
+            return content.strip()
+        except Exception as exc:
+            logger.error("OpenAI API error", extra={"error": str(exc)})
             raise AIServiceError(f"AI service error: {exc}") from exc
 
     @staticmethod
     def _parse_scorecard(raw: str) -> AIScorecardResponse:
-        """Parse JSON scorecard response from Claude."""
+        """Parse JSON scorecard response from the model."""
         try:
-            # Strip markdown fences if Claude adds them despite instructions
+            # Strip markdown fences if the model adds them despite instructions
             clean = raw.strip().removeprefix("```json").removesuffix("```").strip()
             data = json.loads(clean)
             return AIScorecardResponse(**data)

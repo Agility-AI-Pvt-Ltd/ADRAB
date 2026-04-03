@@ -6,11 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from models.models import (
-    DocumentType,
-    Stakeholder,
-    SubmissionStatus,
-)
+from models.models import Stakeholder, SubmissionStatus
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +44,7 @@ class ContextFormData(BaseModel):
 
 
 class SubmissionCreate(BaseModel):
-    doc_type: DocumentType
+    doc_type: str
     stakeholder: Stakeholder
     content: str = Field(min_length=10)
     context_form_data: Optional[ContextFormData] = None
@@ -56,7 +52,7 @@ class SubmissionCreate(BaseModel):
 
 class GenerateDraftRequest(BaseModel):
     """Used when the team member wants the AI to generate a fresh draft."""
-    doc_type: DocumentType
+    doc_type: str
     stakeholder: Stakeholder
     context_form_data: ContextFormData
 
@@ -64,14 +60,14 @@ class GenerateDraftRequest(BaseModel):
 class RefineDraftRequest(BaseModel):
     content: str
     action: str = Field(description="shorter | more_formal | warmer | add_urgency | regenerate")
-    doc_type: DocumentType
+    doc_type: str
     stakeholder: Stakeholder
 
 
 class SubmissionResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
-    doc_type: DocumentType
+    doc_type: str
     stakeholder: Stakeholder
     content: str
     ai_score: Optional[int]
@@ -82,6 +78,7 @@ class SubmissionResponse(BaseModel):
     version: int
     parent_submission_id: Optional[uuid.UUID]
     file_url: Optional[str]
+    file_name: Optional[str]
     submitted_at: Optional[datetime]
     reviewed_at: Optional[datetime]
     created_at: datetime
@@ -91,7 +88,7 @@ class SubmissionResponse(BaseModel):
 
 class SubmissionListItem(BaseModel):
     id: uuid.UUID
-    doc_type: DocumentType
+    doc_type: str
     stakeholder: Stakeholder
     ai_score: Optional[int]
     status: SubmissionStatus

@@ -3,11 +3,11 @@
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base_repository import BaseRepository
-from models.models import User
+from models.models import User, UserRole
 
 
 class UserRepository(BaseRepository[User]):
@@ -28,5 +28,22 @@ class UserRepository(BaseRepository[User]):
 
     async def get_active_users(self) -> list[User]:
         stmt = select(User).where(User.is_active.is_(True))
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_all_users(self) -> list[User]:
+        stmt = (
+            select(User)
+            .order_by(
+                case(
+                    (
+                        (User.role == UserRole.TEAM_MEMBER) & (User.is_active.is_(False)),
+                        0,
+                    ),
+                    else_=1,
+                ),
+                User.created_at.desc(),
+            )
+        )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

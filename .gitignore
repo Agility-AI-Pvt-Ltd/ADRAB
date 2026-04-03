@@ -34,5 +34,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Alembic (keep versions tracked, ignore generated SQL dumps)
+# Local uploads
+uploads/
+
+# SQL dumps
 *.sql

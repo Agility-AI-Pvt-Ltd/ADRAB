@@ -4,14 +4,18 @@ Creates and configures the FastAPI app instance.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from api.v1.router import api_router
+from api.router import api_router
 from core.config import settings
 from core.logging import configure_logging, get_logger
-from db.session import close_db, init_db
+from db.session import close_db, get_db_context, init_db
+from services.document_guidance_service import DocumentGuidanceService
 from utils.exception_handlers import register_exception_handlers
 
 logger = get_logger(__name__)
@@ -23,9 +27,11 @@ async def lifespan(app: FastAPI):
     configure_logging()
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
-    if settings.DEBUG:
-        # In dev, auto-create tables. In production use Alembic migrations.
+    if settings.DEBUG or settings.AUTO_INIT_DB:
+        # In local/dev, auto-create tables. Set AUTO_INIT_DB=false to require migrations.
         await init_db()
+        async with get_db_context() as session:
+            await DocumentGuidanceService(session).ensure_seeded()
 
     yield
 
@@ -35,6 +41,9 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    upload_dir = Path(settings.UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
@@ -43,10 +52,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
+
     # ── CORS ──────────────────────────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_origins=settings.CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -67,3 +78,13 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info",
+    )

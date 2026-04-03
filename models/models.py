@@ -54,16 +54,6 @@ class TeamDepartment(str, enum.Enum):
     FOUNDERS = "founders"
 
 
-class DocumentType(str, enum.Enum):
-    PROPOSAL = "proposal"
-    COLD_EMAIL = "cold_email"
-    REPLY_EMAIL = "reply_email"
-    WHATSAPP = "whatsapp"
-    LINKEDIN = "linkedin"
-    AD_CREATIVE = "ad_creative"
-    PAYMENT_FOLLOWUP = "payment_followup"
-
-
 class Stakeholder(str, enum.Enum):
     PARENT = "parent"
     STUDENT = "student"
@@ -125,7 +115,7 @@ class Submission(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Content metadata
-    doc_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType), nullable=False)
+    doc_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     stakeholder: Mapped[Stakeholder] = mapped_column(Enum(Stakeholder), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     context_form_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)   # key/value from creation form
@@ -209,6 +199,23 @@ class SystemPrompt(Base):
 
 
 # ---------------------------------------------------------------------------
+# Document Guidance (editable per-document-type writing rules)
+# ---------------------------------------------------------------------------
+
+class DocumentGuidance(Base):
+    __tablename__ = "document_guidance"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    doc_type: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    key_requirements: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # Audit Log
 # ---------------------------------------------------------------------------
 
@@ -220,7 +227,7 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)      # e.g. "submission.approve"
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 

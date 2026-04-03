@@ -87,6 +87,21 @@ async def team_member(db_session: AsyncSession) -> User:
     return user
 
 
+@pytest_asyncio.fixture
+async def other_team_member(db_session: AsyncSession) -> User:
+    user = User(
+        name="Another Member",
+        email="other.member@agilityai.in",
+        hashed_password=hash_password("password123"),
+        role=UserRole.TEAM_MEMBER,
+        auth_provider=AuthProvider.LOCAL,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
 def auth_headers(user: User) -> dict:
     token = create_access_token(str(user.id), extra={"role": user.role.value})
     return {"Authorization": f"Bearer {token}"}

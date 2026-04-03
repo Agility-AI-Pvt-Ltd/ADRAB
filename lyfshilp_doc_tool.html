@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyfshilp — AI Document Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green-950: #0a1f14;
+    --green-900: #1B4332;
+    --green-800: #2D6A4F;
+    --green-700: #40916C;
+    --green-400: #74C69D;
+    --green-100: #D8F3DC;
+    --green-50:  #F0FFF4;
+    --gold:      #C9A84C;
+    --gold-light:#F5E6C0;
+    --cream:     #FAFAF7;
+    --ink:       #111810;
+    --ink-mid:   #3A3D38;
+    --ink-soft:  #6B7068;
+    --border:    #E2E8DF;
+    --white:     #FFFFFF;
+    --danger:    #C0392B;
+    --danger-bg: #FDF0EF;
+    --warn:      #B7791F;
+    --warn-bg:   #FFFBEB;
+    --success:   #1B4332;
+    --success-bg:#D8F3DC;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── SIDEBAR ── */
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 240px;
+    background: var(--green-900);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar-logo {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .logo-mark {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+
+  .logo-sub {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--green-400);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .nav-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    padding: 12px 12px 6px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: rgba(255,255,255,0.65);
+    font-size: 13.5px;
+    font-weight: 400;
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+
+  .nav-item:hover { background: rgba(255,255,255,0.08); color: white; }
+
+  .nav-item.active {
+    background: rgba(255,255,255,0.12);
+    color: white;
+    font-weight: 500;
+  }
+
+  .nav-item .nav-icon {
+    width: 18px;
+    height: 18px;
+    opacity: 0.8;
+    flex-shrink: 0;
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--gold);
+    color: var(--green-950);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 20px;
+  }
+
+  .sidebar-user {
+    padding: 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .user-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--green-700);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: white;
+    flex-shrink: 0;
+  }
+
+  .user-name { font-size: 13px; font-weight: 500; color: white; line-height: 1.2; }
+  .user-role { font-size: 11px; color: rgba(255,255,255,0.45); }
+
+  /* ── MAIN ── */
+  .main {
+    margin-left: 240px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .btn-primary {
+    background: var(--green-900);
+    color: white;
+  }
+  .btn-primary:hover { background: var(--green-800); transform: translateY(-1px); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--ink-mid);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover { background: var(--green-50); border-color: var(--green-400); color: var(--green-900); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink-soft);
+    padding: 8px 10px;
+  }
+  .btn-ghost:hover { background: var(--green-50); color: var(--green-900); }
+
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #a93226; }
+
+  .btn-success { background: var(--green-900); color: white; }
+  .btn-success:hover { background: var(--green-800); }
+
+  /* ── CONTENT ── */
+  .content { padding: 28px 32px; flex: 1; }
+
+  /* ── STAT CARDS ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+
+  .stat-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .stat-card.pending::before { background: var(--gold); }
+  .stat-card.approved::before { background: var(--green-700); }
+  .stat-card.rejected::before { background: var(--danger); }
+  .stat-card.total::before { background: var(--green-900); }
+
+  .stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 8px; }
+  .stat-value { font-size: 32px; font-weight: 300; color: var(--ink); font-family: 'Playfair Display', serif; line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+
+  /* ── FILTERS ── */
+  .filters-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .filter-select {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink-mid);
+    background: var(--white);
+    cursor: pointer;
+    outline: none;
+  }
+  .filter-select:focus { border-color: var(--green-700); }
+
+  .search-input {
+    padding: 7px 14px 7px 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink);
+    background: var(--white);
+    outline: none;
+    width: 220px;
+    position: relative;
+  }
+  .search-wrap { position: relative; }
+  .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); }
+
+  /* ── TABLE ── */
+  .table-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  thead th {
+    padding: 13px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--cream);
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--green-50); }
+  tbody tr.selected-row { background: #F0FFF4; }
+
+  td {
+    padding: 14px 16px;
+    font-size: 13.5px;
+    color: var(--ink-mid);
+    vertical-align: middle;
+  }
+
+  .td-name { font-weight: 500; color: var(--ink); }
+  .td-meta { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  /* ── BADGES ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .badge-pending { background: var(--warn-bg); color: var(--warn); }
+  .badge-approved { background: var(--success-bg); color: var(--success); }
+  .badge-rejected { background: var(--danger-bg); color: var(--danger); }
+
+  .score-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .score-bar-bg { flex: 1; height: 5px; background: var(--border); border-radius: 10px; overflow: hidden; max-width: 60px; }
+  .score-bar-fill { height: 100%; border-radius: 10px; transition: width 0.4s; }
+  .score-text { font-size: 12.5px; font-weight: 600; min-width: 36px; }
+  .score-high { color: var(--green-800); }
+  .score-mid  { color: var(--warn); }
+  .score-low  { color: var(--danger); }
+
+  /* ── SCREEN SYSTEM ── */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ── REVIEW PANEL ── */
+  .review-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .review-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--ink-mid);
+    font-weight: 500;
+  }
+
+  .review-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
+
+  .panel-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .panel-sub { font-size: 12px; color: var(--ink-soft); }
+
+  .doc-textarea {
+    width: 100%;
+    min-height: 340px;
+    padding: 20px;
+    border: none;
+    outline: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--ink);
+    resize: vertical;
+    background: transparent;
+  }
+
+  /* ── SCORECARD ── */
+  .scorecard-body { padding: 20px; }
+
+  .overall-score {
+    text-align: center;
+    padding: 20px 0 18px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 18px;
+  }
+
+  .score-ring {
+    width: 84px; height: 84px;
+    border-radius: 50%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    margin: 0 auto 10px;
+    border: 3px solid var(--green-100);
+    position: relative;
+  }
+
+  .score-ring-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--green-900);
+    line-height: 1;
+  }
+
+  .score-ring-denom { font-size: 11px; color: var(--ink-soft); font-weight: 500; }
+  .score-label { font-size: 13px; font-weight: 600; color: var(--green-900); }
+  .score-desc { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+
+  .dim-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .dim-row:last-child { border-bottom: none; }
+  .dim-name { font-size: 12.5px; color: var(--ink-mid); flex: 1; }
+  .dim-score { font-size: 12.5px; font-weight: 600; min-width: 40px; text-align: right; }
+  .dim-bar-bg { width: 60px; height: 4px; background: var(--border); border-radius: 10px; overflow: hidden; }
+  .dim-bar-fill { height: 100%; border-radius: 10px; }
+
+  /* ── SUGGESTIONS ── */
+  .suggestions-wrap { padding: 16px 20px; border-top: 1px solid var(--border); }
+  .sug-title { font-size: 12px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; }
+
+  .sug-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--cream);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border-left: 3px solid var(--green-700);
+  }
+
+  .sug-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .sug-text { font-size: 12.5px; color: var(--ink-mid); flex: 1; line-height: 1.5; }
+  .sug-apply {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--green-800);
+    background: var(--green-100);
+    border: none;
+    padding: 3px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: 'DM Sans', sans-serif;
+    transition: background 0.12s;
+  }
+  .sug-apply:hover { background: var(--green-400); color: white; }
+
+  /* ── ACTION BAR ── */
+  .action-bar {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    background: var(--white);
+    flex-wrap: wrap;
+  }
+
+  /* ── CREATE SCREEN ── */
+  .create-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+  .form-group { margin-bottom: 18px; }
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-mid);
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+  }
+  .form-label span { color: var(--danger); margin-left: 2px; }
+
+  .form-control {
+    width: 100%;
+    padding: 9px 13px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink);
+    background: var(--white);
+    outline: none;
+    transition: border-color 0.15s;
+    appearance: none;
+  }
+  .form-control:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px rgba(64,145,108,0.1); }
+
+  .form-textarea {
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.6;
+  }
+
+  .form-hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; }
+
+  .optional-tag {
+    display: inline-block;
+    font-size: 10px;
+    color: var(--ink-soft);
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-weight: 400;
+    vertical-align: middle;
+  }
+
+  /* ── GENERATE PANEL ── */
+  .generate-panel {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    position: sticky;
+    top: 80px;
+  }
+
+  .gen-header {
+    padding: 16px 20px;
+    background: var(--green-900);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .gen-title { font-size: 14px; font-weight: 600; }
+  .gen-sub { font-size: 11.5px; color: var(--green-400); margin-top: 2px; }
+
+  .gen-body { padding: 20px; }
+
+  .gen-output {
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 13.5px;
+    line-height: 1.8;
+    color: var(--ink);
+    min-height: 260px;
+    white-space: pre-wrap;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .gen-output.empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-soft);
+    font-size: 13px;
+    text-align: center;
+    min-height: 260px;
+  }
+
+  .refine-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+
+  .refine-chip {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--ink-mid);
+    transition: all 0.15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .refine-chip:hover { background: var(--green-50); border-color: var(--green-400); color: var(--green-900); }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--white);
+    border-radius: 16px;
+    width: 480px;
+    max-width: 95vw;
+    overflow: hidden;
+    animation: modalIn 0.2s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+  .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--ink-soft); line-height: 1; }
+
+  .modal-body { padding: 20px 24px; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* ── LOADING ── */
+  .loading-dots { display: inline-flex; gap: 4px; align-items: center; }
+  .loading-dots span {
+    width: 6px; height: 6px;
+    background: var(--green-700);
+    border-radius: 50%;
+    animation: dot-pulse 1.4s infinite;
+  }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes dot-pulse {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ── EMOJI RULE BANNER ── */
+  .rule-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--warn-bg);
+    border: 1px solid #FDE68A;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 12.5px;
+    color: #92400E;
+  }
+
+  /* ── TABS ── */
+  .tab-row { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .tab-btn {
+    padding: 10px 20px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+    background: none;
+    border-top: none; border-left: none; border-right: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .tab-btn.active { color: var(--green-900); border-bottom-color: var(--green-900); }
+  .tab-btn:hover:not(.active) { color: var(--ink); }
+
+  /* ── ANIMATIONS ── */
+  .fade-in { animation: fadeIn 0.25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    margin-bottom: 20px;
+    padding: 6px 0;
+    background: none;
+    border: none;
+    font-family: 'DM Sans', sans-serif;
+    transition: color 0.15s;
+  }
+  .back-btn:hover { color: var(--green-900); }
+
+  /* ── MODE TOGGLE ── */
+  .mode-toggle {
+    display: inline-flex;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    margin-bottom: 24px;
+  }
+  .mode-btn {
+    padding: 7px 18px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+  }
+  .mode-btn.active { background: var(--white); color: var(--green-900); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+  /* ── EMPTY STATE ── */
+  .empty-state { text-align: center; padding: 60px 20px; }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-title { font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .empty-sub { font-size: 13px; color: var(--ink-soft); }
+
+  /* ── SETTINGS ── */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .setting-card { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+  .setting-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+  .setting-desc { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 16px; line-height: 1.5; }
+  .setting-full { grid-column: 1 / -1; }
+
+  /* ── TOGGLE SWITCH ── */
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-label { font-size: 13.5px; color: var(--ink-mid); }
+  .toggle-sub { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+  .toggle {
+    position: relative; width: 38px; height: 22px; flex-shrink: 0;
+    background: var(--border); border-radius: 11px; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .toggle.on { background: var(--green-700); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    background: white;
+    border-radius: 50%;
+    top: 3px; left: 3px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  .tone-slider-wrap { padding: 10px 0; }
+  .tone-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-soft); margin-top: 6px; }
+  input[type=range] { width: 100%; accent-color: var(--green-700); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">Lyfshilp</div>
+      <div class="logo-sub">AI Document Tool</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Founders</div>
+      <div class="nav-item active" onclick="showScreen('dashboard')">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+        <span class="nav-badge">3</span>
+      </div>
+      <div class="nav-item" onclick="showScreen('create')">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Create Document
+      </div>
+      <div class="nav-section-label">Manage</div>
+      <div class="nav-item" onclick="showScreen('settings')">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Settings & Voice
+      </div>
+      <div class="nav-item">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Analytics
+      </div>
+      <div class="nav-item">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        Team Members
+      </div>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-avatar">SS</div>
+      <div>
+        <div class="user-name">Shreya Sienha</div>
+        <div class="user-role">Founder · Approver</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">Review Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn btn-outline" onclick="showScreen('create')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Create Document
+        </button>
+        <button class="btn btn-primary" onclick="openModal('modalReject')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+          3 Pending
+        </button>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 1 — DASHBOARD
+    ════════════════════════════════════════════ -->
+    <div class="content screen active" id="screen-dashboard">
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card pending">
+          <div class="stat-label">Pending Review</div>
+          <div class="stat-value">3</div>
+          <div class="stat-sub">2 submitted today</div>
+        </div>
+        <div class="stat-card approved">
+          <div class="stat-label">Approved Today</div>
+          <div class="stat-value">5</div>
+          <div class="stat-sub">Avg score 84/100</div>
+        </div>
+        <div class="stat-card rejected">
+          <div class="stat-label">Rejected This Week</div>
+          <div class="stat-value">2</div>
+          <div class="stat-sub">1 resubmitted</div>
+        </div>
+        <div class="stat-card total">
+          <div class="stat-label">Total This Month</div>
+          <div class="stat-value">47</div>
+          <div class="stat-sub">89% approval rate</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters-row">
+        <div class="search-wrap">
+          <svg class="search-icon" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input class="search-input" placeholder="Search documents..." style="padding-left:36px">
+        </div>
+        <select class="filter-select">
+          <option>All Document Types</option>
+          <option>Cold Email</option>
+          <option>WhatsApp Message</option>
+          <option>Proposal</option>
+          <option>LinkedIn Message</option>
+          <option>Ad Creative</option>
+          <option>Payment Follow-up</option>
+        </select>
+        <select class="filter-select">
+          <option>All Team Members</option>
+          <option>Bhawna Khorwal</option>
+          <option>Riya Sharma</option>
+          <option>Marketing Team</option>
+        </select>
+        <select class="filter-select">
+          <option>All Stakeholders</option>
+          <option>Parent</option>
+          <option>Principal</option>
+          <option>Corporate</option>
+          <option>Student</option>
+        </select>
+        <select class="filter-select">
+          <option>All Statuses</option>
+          <option>Pending</option>
+          <option>Approved</option>
+          <option>Rejected</option>
+        </select>
+      </div>
+
+      <!-- Table -->
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team Member</th>
+              <th>Document Type</th>
+              <th>Stakeholder</th>
+              <th>AI Score</th>
+              <th>Status</th>
+              <th>Submitted</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr onclick="showScreen('review')">
+              <td style="color:var(--ink-soft);font-size:12px">01</td>
+              <td>
+                <div class="td-name">Bhawna Khorwal</div>
+                <div class="td-meta">Sales / BD Team</div>
+              </td>
+              <td>
+                <div class="td-name">Cold Email</div>
+                <div class="td-meta">AI Generated Draft</div>
+              </td>
+              <td><span class="meta-chip">Principal</span></td>
+              <td>
+                <div class="score-bar-wrap">
+                  <div class="score-bar-bg"><div class="score-bar-fill" style="width:78%;background:var(--warn)"></div></div>
+                  <span class="score-text score-mid">78</span>
+                </div>
+              </td>
+              <td><span class="badge badge-pending">● Pending</span></td>
+              <td style="color:var(--ink-soft);font-size:12px">Today, 11:24 AM</td>
+              <td><button class="btn btn-outline" style="padding:5px 12px;font-size:12px" onclick="showScreen('review');event.stopPropagation()">Review →</button></td>
+            </tr>
+            <tr onclick="showScreen('review')">
+              <td style="color:var(--ink-soft);font-size:12px">02</td>
+              <td>
+                <div class="td-name">Riya Sharma</div>
+                <div class="td-meta">Sales / BD Team</div>
+              </td>
+              <td>
+                <div class="td-name">WhatsApp Message</div>
+                <div class="td-meta">AI Generated Draft</div>
+              </td>
+              <td><span class="meta-chip">Parent</span></td>
+              <td>
+                <div class="score-bar-wrap">
+                  <div class="score-bar-bg"><div class="score-bar-fill" style="width:91%;background:var(--green-700)"></div></div>
+                  <span class="score-text score-high">91</span>
+                </div>
+              </td>
+              <td><span class="badge badge-pending">● Pending</span></td>
+              <td style="color:var(--ink-soft);font-size:12px">Today, 10:05 AM</td>
+              <td><button class="btn btn-outline" style="padding:5px 12px;font-size:12px" onclick="showScreen('review');event.stopPropagation()">Review →</button></td>
+            </tr>
+            <tr onclick="showScreen('review')">
+              <td style="color:var(--ink-soft);font-size:12px">03</td>
+              <td>
+                <div class="td-name">Marketing Team</div>
+                <div class="td-meta">Marketing</div>
+              </td>
+              <td>
+                <div class="td-name">Ad Creative Copy</div>
+                <div class="td-meta">Existing Draft</div>
+              </td>
+              <td><span class="meta-chip">Students</span></td>
+              <td>
+                <div class="score-bar-wrap">
+                  <div class="score-bar-bg"><div class="score-bar-fill" style="width:54%;background:var(--danger)"></div></div>
+                  <span class="score-text score-low">54</span>
+                </div>
+              </td>
+              <td><span class="badge badge-pending">● Pending</span></td>
+              <td style="color:var(--ink-soft);font-size:12px">Yesterday</td>
+              <td><button class="btn btn-outline" style="padding:5px 12px;font-size:12px" onclick="showScreen('review');event.stopPropagation()">Review →</button></td>
+            </tr>
+            <tr>
+              <td style="color:var(--ink-soft);font-size:12px">04</td>
+              <td>
+                <div class="td-name">Bhawna Khorwal</div>
+                <div class="td-meta">Sales / BD Team</div>
+              </td>
+              <td>
+                <div class="td-name">Proposal</div>
+                <div class="td-meta">AI Generated Draft</div>
+              </td>
+              <td><span class="meta-chip">Principal</span></td>
+              <td>
+                <div class="score-bar-wrap">
+                  <div class="score-bar-bg"><div class="score-bar-fill" style="width:88%;background:var(--green-700)"></div></div>
+                  <span class="score-text score-high">88</span>
+                </div>
+              </td>
+              <td><span class="badge badge-approved">✓ Approved</span></td>
+              <td style="color:var(--ink-soft);font-size:12px">30 Mar</td>
+              <td><button class="btn btn-ghost" style="padding:5px 12px;font-size:12px">View</button></td>
+            </tr>
+            <tr>
+              <td style="color:var(--ink-soft);font-size:12px">05</td>
+              <td>
+                <div class="td-name">Riya Sharma</div>
+                <div class="td-meta">Sales / BD Team</div>
+              </td>
+              <td>
+                <div class="td-name">LinkedIn Message</div>
+                <div class="td-meta">Existing Draft</div>
+              </td>
+              <td><span class="meta-chip">Corporate</span></td>
+              <td>
+                <div class="score-bar-wrap">
+                  <div class="score-bar-bg"><div class="score-bar-fill" style="width:42%;background:var(--danger)"></div></div>
+                  <span class="score-text score-low">42</span>
+                </div>
+              </td>
+              <td><span class="badge badge-rejected">✕ Rejected</span></td>
+              <td style="color:var(--ink-soft);font-size:12px">28 Mar</td>
+              <td><button class="btn btn-ghost" style="padding:5px 12px;font-size:12px">View</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 2 — REVIEW PANEL
+    ════════════════════════════════════════════ -->
+    <div class="content screen" id="screen-review">
+      <button class="back-btn" onclick="showScreen('dashboard')">
+        ← Back to Dashboard
+      </button>
+
+      <div class="review-header">
+        <div>
+          <div class="review-meta">
+            <span class="meta-chip">Cold Email</span>
+            <span class="meta-chip">Principal</span>
+            <span class="meta-chip">By: Bhawna Khorwal</span>
+            <span class="meta-chip">AI Generated</span>
+            <span class="meta-chip">v1</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:12px;color:var(--ink-soft)">Submitted Today, 11:24 AM</span>
+        </div>
+      </div>
+
+      <div class="review-grid">
+
+        <!-- Left: Document -->
+        <div>
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Document Content</div>
+                <div class="panel-sub">Click to edit directly</div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px">v1 (original)</button>
+                <button class="btn btn-outline" style="font-size:12px;padding:5px 10px">Full AI Rewrite</button>
+              </div>
+            </div>
+            <textarea class="doc-textarea" id="docContent">Dear Kuriakose Sir,
+
+Thank you for sharing Ms. Alphy's contact — I'm reaching out on your recommendation.
+
+A quick question: what if your students could walk into the next academic year with their own AI-powered study system, built by them, for them?
+
+That is exactly what the FutureX AI Scholar Programme delivers this summer.
+
+We are Lyfshilp Academy — shortlisted by Stanford Seed | Graduate School of Business among the Top 100 Startups from South Asia, incubated at IIIT Allahabad, and DPIIT recognised. Harvard research shows AI can boost productivity by 40%+ when used correctly. Our programme is built entirely around that insight.
+
+In 10 live online sessions, your students will:
+• Build real AI-based apps — no coding knowledge needed
+• Create their own personalised AI Tutor for board and competitive exams
+• Design a 6-month adaptive study plan mapped to JEE / NEET / CLAT
+• Return to school after vacation operating like never before
+
+We are already in advanced discussions with DPS Mathura Road, DPS Gurugram, and DPS Faridabad. Mt. Carmel School, Dwarka has been onboarded. Seats per school are limited.
+
+I would love to schedule a brief 15-minute call. Would any time this week work for you?
+
+Warm regards,
+Bhawna Khorwal
+Strategy Team | Lyfshilp Academy
++91 70421 49608</textarea>
+            <div class="action-bar">
+              <button class="btn btn-success" onclick="showApproveToast()">✓ Approve As-Is</button>
+              <button class="btn btn-outline">✏ Approve with Edits</button>
+              <button class="btn btn-danger" onclick="openModal('modalReject')">✕ Reject + Feedback</button>
+              <button class="btn btn-ghost" style="margin-left:auto">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Scorecard -->
+        <div>
+          <div class="panel-card" style="margin-bottom:16px">
+            <div class="panel-header">
+              <div class="panel-title">AI Scorecard</div>
+              <span class="badge badge-pending">Needs Attention</span>
+            </div>
+            <div class="scorecard-body">
+              <div class="overall-score">
+                <div class="score-ring">
+                  <div class="score-ring-num">78</div>
+                  <div class="score-ring-denom">/100</div>
+                </div>
+                <div class="score-label">Good Foundation</div>
+                <div class="score-desc">Minor adjustments recommended</div>
+              </div>
+              <div>
+                <div class="dim-row">
+                  <div class="dim-name">Tone & Voice Match</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="dim-bar-bg"><div class="dim-bar-fill" style="width:80%;background:var(--green-700)"></div></div>
+                    <div class="dim-score score-high">16/20</div>
+                  </div>
+                </div>
+                <div class="dim-row">
+                  <div class="dim-name">Format & Structure</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="dim-bar-bg"><div class="dim-bar-fill" style="width:90%;background:var(--green-700)"></div></div>
+                    <div class="dim-score score-high">18/20</div>
+                  </div>
+                </div>
+                <div class="dim-row">
+                  <div class="dim-name">Stakeholder Fit</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="dim-bar-bg"><div class="dim-bar-fill" style="width:75%;background:var(--warn)"></div></div>
+                    <div class="dim-score score-mid">15/20</div>
+                  </div>
+                </div>
+                <div class="dim-row">
+                  <div class="dim-name">Missing Elements</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="dim-bar-bg"><div class="dim-bar-fill" style="width:70%;background:var(--warn)"></div></div>
+                    <div class="dim-score score-mid">14/20</div>
+                  </div>
+                </div>
+                <div class="dim-row">
+                  <div class="dim-name">Improvement Scope</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="dim-bar-bg"><div class="dim-bar-fill" style="width:75%;background:var(--warn)"></div></div>
+                    <div class="dim-score score-mid">15/20</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="suggestions-wrap">
+              <div class="sug-title">AI Suggestions (3)</div>
+              <div class="sug-item">
+                <div class="sug-icon">💡</div>
+                <div class="sug-text">Add programme fee (₹2,999 + GST) and seat deadline to create urgency without being pushy</div>
+                <button class="sug-apply" onclick="applySuggestion(1)">Apply</button>
+              </div>
+              <div class="sug-item">
+                <div class="sug-icon">💡</div>
+                <div class="sug-text">The closing CTA is strong — consider adding a specific day ("Would Thursday or Friday work?") to reduce decision fatigue</div>
+                <button class="sug-apply" onclick="applySuggestion(2)">Apply</button>
+              </div>
+              <div class="sug-item">
+                <div class="sug-icon">💡</div>
+                <div class="sug-text">Add P.S. with parent circular template offer — proven to increase principal response rates</div>
+                <button class="sug-apply" onclick="applySuggestion(3)">Apply</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Emoji & Rule Flags -->
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title">Rule Checks</div>
+              <span class="badge badge-approved">All Clear</span>
+            </div>
+            <div style="padding:14px 20px">
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">No emoji used</div>
+                  <div class="toggle-sub">Correct — emails to principals must never have emoji</div>
+                </div>
+                <span style="color:var(--green-700);font-weight:600;font-size:13px">✓ Pass</span>
+              </div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">Credibility markers present</div>
+                  <div class="toggle-sub">Stanford Seed, IIIT Allahabad, Harvard research</div>
+                </div>
+                <span style="color:var(--green-700);font-weight:600;font-size:13px">✓ Pass</span>
+              </div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">Referral name in opening</div>
+                  <div class="toggle-sub">Kuriakose Sir mentioned in line 1</div>
+                </div>
+                <span style="color:var(--green-700);font-weight:600;font-size:13px">✓ Pass</span>
+              </div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">CTA present</div>
+                  <div class="toggle-sub">15-min call ask at close</div>
+                </div>
+                <span style="color:var(--green-700);font-weight:600;font-size:13px">✓ Pass</span>
+              </div>
+              <div class="toggle-row">
+                <div>
+                  <div class="toggle-label">Price & deadline mentioned</div>
+                  <div class="toggle-sub">Missing — suggested above</div>
+                </div>
+                <span style="color:var(--danger);font-weight:600;font-size:13px">✕ Flag</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 3 — CREATE DOCUMENT
+    ════════════════════════════════════════════ -->
+    <div class="content screen" id="screen-create">
+
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="modeGenerate" onclick="setMode('generate')">✦ AI Generate Draft</button>
+        <button class="mode-btn" id="modeExisting" onclick="setMode('existing')">Submit Existing Draft</button>
+      </div>
+
+      <div class="create-layout">
+
+        <!-- Left: Context Form -->
+        <div>
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Step 1 — What are we creating?</div>
+                <div class="panel-sub">Answer these questions and the AI will draft it in the Founders' voice</div>
+              </div>
+            </div>
+            <div style="padding:20px">
+
+              <div class="rule-banner">
+                ⚠️ <strong>Emoji rule:</strong> Emails, proposals, LinkedIn and payment follow-ups — zero emoji. WhatsApp to parents/students — max 2. When in doubt, leave it out.
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Document Type <span>*</span></label>
+                <select class="form-control" id="docType" onchange="updateContextFields()">
+                  <option value="">Select document type...</option>
+                  <option value="cold-email">Cold Email</option>
+                  <option value="whatsapp">WhatsApp Message</option>
+                  <option value="proposal">Proposal</option>
+                  <option value="linkedin">LinkedIn Message</option>
+                  <option value="payment">Payment Follow-up</option>
+                  <option value="ad">Ad Creative Copy</option>
+                  <option value="reply-email">Reply Email</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Stakeholder <span>*</span></label>
+                <select class="form-control" id="stakeholder">
+                  <option value="">Who is this going to?</option>
+                  <option value="parent">Parent</option>
+                  <option value="student">Student</option>
+                  <option value="principal">Principal / School HoD</option>
+                  <option value="counsellor">Counsellor</option>
+                  <option value="corporate">Corporate</option>
+                  <option value="investor">Investor</option>
+                  <option value="govt">Government Official</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Programme <span>*</span></label>
+                <select class="form-control">
+                  <option value="">Which programme is this about?</option>
+                  <option>FutureX AI Scholar Programme (₹2,999 + GST)</option>
+                  <option>FutureX Fellowship (₹49,999)</option>
+                  <option>Teacher AI Workshop (Free)</option>
+                  <option>Corporate AI Training</option>
+                  <option>Career Counselling Session</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">What is the ONE thing you want them to do? <span>*</span></label>
+                <select class="form-control">
+                  <option value="">Select desired action...</option>
+                  <option>Book a 15-minute call</option>
+                  <option>Pay the programme fee</option>
+                  <option>Approve the school partnership</option>
+                  <option>Register / fill the form</option>
+                  <option>Share with parents</option>
+                  <option>Reply to this message</option>
+                </select>
+              </div>
+
+              <!-- Dynamic context fields -->
+              <div id="contextFields">
+                <div class="form-group">
+                  <label class="form-label">Recipient Name & Designation <span>*</span></label>
+                  <input class="form-control" placeholder="e.g. Ms. Alphy Mathew, Vice Principal" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">School / Organisation Name <span>*</span></label>
+                  <input class="form-control" placeholder="e.g. St. Thomas School, Indirapuram" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Referred by <span class="optional-tag">optional</span></label>
+                  <input class="form-control" placeholder="e.g. Kuriakose Sir, Principal" />
+                  <div class="form-hint">A referral in line 1 doubles reply rate — always add if available</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Have they been contacted before? <span>*</span></label>
+                <select class="form-control">
+                  <option>First contact</option>
+                  <option>Follow-up (2nd attempt)</option>
+                  <option>Follow-up (3rd attempt — final)</option>
+                  <option>They replied previously</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Deadline or urgency to mention <span class="optional-tag">optional</span></label>
+                <input class="form-control" placeholder="e.g. Seats close 5th April" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Anything specific to personalise <span class="optional-tag">optional</span></label>
+                <textarea class="form-control form-textarea" rows="3" placeholder="e.g. Their child is in Class 10 preparing for JEE. They mentioned budget is a concern."></textarea>
+                <div class="form-hint">This is the most powerful field — use it whenever you have any extra context</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Generate Panel -->
+        <div>
+          <div class="generate-panel">
+            <div class="gen-header">
+              <div>
+                <div class="gen-title">AI Draft — Founders' Voice</div>
+                <div class="gen-sub">Shreya & Sharadd's tone, format & style</div>
+              </div>
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="opacity:0.6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <div class="gen-body">
+              <div class="gen-output" id="genOutput">
+                <div class="empty-state" style="padding:40px 20px">
+                  <div class="empty-icon">✦</div>
+                  <div class="empty-title">Ready to generate</div>
+                  <div class="empty-sub">Fill in the form and click Generate Draft</div>
+                </div>
+              </div>
+              <div class="refine-chips" id="refineChips" style="display:none">
+                <button class="refine-chip" onclick="refine('shorter')">↓ Shorter</button>
+                <button class="refine-chip" onclick="refine('formal')">▲ More Formal</button>
+                <button class="refine-chip" onclick="refine('warmer')">♥ Warmer</button>
+                <button class="refine-chip" onclick="refine('urgent')">⚡ Add Urgency</button>
+                <button class="refine-chip" onclick="generateDraft()">↻ Regenerate</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+                <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="generateDraft()">
+                  ✦ Generate Draft in Founders' Voice
+                </button>
+                <button class="btn btn-outline" style="width:100%;justify-content:center" id="submitDraftBtn" disabled onclick="showScreen('dashboard')" style="display:none">
+                  Submit for Founders' Review →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 4 — SETTINGS
+    ════════════════════════════════════════════ -->
+    <div class="content screen" id="screen-settings">
+      <div style="margin-bottom:24px">
+        <div style="font-size:20px;font-weight:600;font-family:'Playfair Display',serif;margin-bottom:4px">Settings & Brand Voice</div>
+        <div style="font-size:13px;color:var(--ink-soft)">Configure AI behaviour, tone rules, and team access. Founders only.</div>
+      </div>
+
+      <div class="settings-grid">
+
+        <div class="setting-card setting-full">
+          <div class="setting-title">Emoji Rules</div>
+          <div class="setting-desc">Control where and how emoji can be used. These rules are enforced automatically by the AI on every document.</div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Cold Emails</div><div class="toggle-sub">Professional outreach — zero emoji</div></div>
+            <div class="toggle" onclick="this.classList.remove('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Proposals & Agreements</div><div class="toggle-sub">Formal documents — zero emoji</div></div>
+            <div class="toggle" onclick="this.classList.remove('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">LinkedIn Messages</div><div class="toggle-sub">Professional platform — zero emoji</div></div>
+            <div class="toggle" onclick="this.classList.remove('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Payment Follow-ups</div><div class="toggle-sub">Formal request — zero emoji</div></div>
+            <div class="toggle" onclick="this.classList.remove('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">WhatsApp to Parents</div><div class="toggle-sub">Max 2 emoji per message, warmth only</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">WhatsApp to Students</div><div class="toggle-sub">Max 3 emoji per message, energy and relatability</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Ad Creative Copy</div><div class="toggle-sub">Context-dependent — Instagram only, never print</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+        </div>
+
+        <div class="setting-card">
+          <div class="setting-title">Tone Dial per Stakeholder</div>
+          <div class="setting-desc">Adjust the default warmth level the AI uses when generating documents for each audience.</div>
+          <div style="margin-top:8px">
+            <div style="margin-bottom:16px">
+              <div style="font-size:13px;font-weight:500;margin-bottom:6px;color:var(--ink-mid)">Parents</div>
+              <div class="tone-slider-wrap">
+                <input type="range" min="0" max="100" value="80">
+                <div class="tone-labels"><span>Formal</span><span>Warm</span></div>
+              </div>
+            </div>
+            <div style="margin-bottom:16px">
+              <div style="font-size:13px;font-weight:500;margin-bottom:6px;color:var(--ink-mid)">Principals</div>
+              <div class="tone-slider-wrap">
+                <input type="range" min="0" max="100" value="40">
+                <div class="tone-labels"><span>Formal</span><span>Warm</span></div>
+              </div>
+            </div>
+            <div style="margin-bottom:16px">
+              <div style="font-size:13px;font-weight:500;margin-bottom:6px;color:var(--ink-mid)">Corporates / Investors</div>
+              <div class="tone-slider-wrap">
+                <input type="range" min="0" max="100" value="25">
+                <div class="tone-labels"><span>Formal</span><span>Warm</span></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:500;margin-bottom:6px;color:var(--ink-mid)">Students</div>
+              <div class="tone-slider-wrap">
+                <input type="range" min="0" max="100" value="90">
+                <div class="tone-labels"><span>Formal</span><span>Warm</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-card">
+          <div class="setting-title">AI Features</div>
+          <div class="setting-desc">Control which AI capabilities are active across the tool.</div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Factual error checker</div><div class="toggle-sub">Validate fees, session counts, school names</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Duplicate detection</div><div class="toggle-sub">Flag near-identical docs to same audience</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Confidence score</div><div class="toggle-sub">Show when AI is uncertain about a doc type</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Founder override memory</div><div class="toggle-sub">Learn from every edit the Founders make</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Golden examples learning</div><div class="toggle-sub">Train AI on approved documents over time</div></div>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+        </div>
+
+        <div class="setting-card setting-full">
+          <div class="setting-title">Brand Voice System Prompt</div>
+          <div class="setting-desc">This is the core instruction the AI uses for every document. Edit with care — this defines how the tool sounds.</div>
+          <textarea class="form-control form-textarea" style="min-height:180px;font-family:'DM Mono',monospace;font-size:12px;background:var(--cream)">You are the AI writing assistant for Lyfshilp Academy — a DPIIT-recognised EdTech startup incubated at IIIT Allahabad, shortlisted among Top 100 South Asia Startups by Stanford Seed | Graduate School of Business.
+
+VOICE: Warm but authoritative. Aspirational. Never pushy or salesy. Credibility-first, not product-first.
+
+ALWAYS include where relevant: Stanford Seed | GSB, DPIIT, IIIT Allahabad, Harvard 40% productivity research, 38 partner schools, 6,000+ students impacted.
+
+NEVER use: "We are pleased to inform", "Kindly", "Please find attached", "Hope this email finds you well".
+
+EMOJI RULE: Zero emoji in emails, proposals, LinkedIn, payment follow-ups. Max 2 in WhatsApp to parents. Max 3 to students. Default is always NO emoji.
+
+END every document with one clear, low-friction CTA.</textarea>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-primary">Save Changes</button>
+            <button class="btn btn-outline">Reset to Default</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── REJECT MODAL ── -->
+<div class="modal-overlay" id="modalReject">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Reject Document + Send Feedback</div>
+      <button class="modal-close" onclick="closeModal('modalReject')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--ink-soft);margin-bottom:12px">AI-generated rejection note (edit before sending):</div>
+      <textarea class="form-control form-textarea" style="min-height:140px">The opening of this email is too generic — it does not lead with a strong hook or insight. Please open with a specific question or a data point (e.g. "What if your students could cut their study time by 40%?") rather than a referral follow-up.
+
+Additionally, the programme fee and seat deadline are missing. These should always be included to create urgency.
+
+Please revise and resubmit.</textarea>
+      <div style="margin-top:12px;padding:10px 14px;background:var(--warn-bg);border-radius:8px;font-size:12px;color:#92400E">
+        Team member will see this note and the AI's rewrite suggestion before resubmitting.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modalReject')">Cancel</button>
+      <button class="btn btn-danger" onclick="closeModal('modalReject');showScreen('dashboard')">Send Rejection</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast" style="position:fixed;bottom:28px;right:28px;background:var(--green-900);color:white;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;display:none;z-index:300;animation:fadeIn 0.2s ease;box-shadow:0 4px 20px rgba(0,0,0,0.2)">
+  ✓ Document approved and saved
+</div>
+
+<script>
+  const sampleDraft = `Dear Ms. Alphy,
+
+I'm reaching out on the recommendation of Kuriakose Sir — he felt your school would benefit from what we're building this summer.
+
+A quick question: what if your students could walk into the next academic year with their own AI-powered study system, built by them, for them?
+
+That is exactly what the FutureX AI Scholar Programme delivers — in just 10 live online sessions.
+
+We are Lyfshilp Academy, shortlisted by Stanford Seed | Graduate School of Business among the Top 100 Startups from South Asia, incubated at IIIT Allahabad, and DPIIT recognised. Harvard research shows AI can boost productivity by 40%+ when used correctly. Our programme is built entirely around that insight.
+
+In 10 sessions, your students will:
+• Build real AI apps — no coding needed, open to all streams
+• Create a personalised AI Tutor for JEE, NEET, CLAT, CA Foundation
+• Design a 6-month adaptive study plan — AI-generated and adjustable
+• Return to school operating like never before
+
+We are already in advanced discussions with DPS Mathura Road, DPS Gurugram, and DPS Faridabad. Mt. Carmel School, Dwarka has been onboarded. Fee: ₹2,999 + GST per student. Seats per school are limited — first batch filling fast.
+
+I would love a brief 15-minute call. Would Thursday or Friday this week work for you?
+
+Warm regards,
+Bhawna Khorwal
+Strategy Team | Lyfshilp Academy
++91 70421 49608
+
+P.S. Happy to share a parent circular template your school can send directly — zero effort on your end.`;
+
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + id).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+    const titles = {
+      dashboard: 'Review Dashboard',
+      review: 'Document Review',
+      create: 'Create Document',
+      settings: 'Settings & Brand Voice'
+    };
+    document.getElementById('topbar-title').textContent = titles[id] || '';
+
+    const navMap = { dashboard: 0, create: 1, settings: 2 };
+    const navItems = document.querySelectorAll('.nav-item');
+    if (navMap[id] !== undefined) navItems[navMap[id]].classList.add('active');
+
+    document.getElementById('screen-' + id).classList.add('fade-in');
+    window.scrollTo(0, 0);
+  }
+
+  function openModal(id) {
+    document.getElementById(id).classList.add('open');
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+
+  function showApproveToast() {
+    const t = document.getElementById('toast');
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; showScreen('dashboard'); }, 2000);
+  }
+
+  function applySuggestion(n) {
+    const ta = document.getElementById('docContent');
+    const suggestions = {
+      1: '\n\nFee: ₹2,999 + GST per student. Seats closing 5th April.',
+      2: '\nWould Thursday or Friday this week work for a quick 15-minute call?',
+      3: '\n\nP.S. Happy to share a parent circular template your school can use directly — zero effort on your end.'
+    };
+    ta.value += suggestions[n];
+    event.target.textContent = '✓';
+    event.target.style.background = 'var(--green-700)';
+    event.target.style.color = 'white';
+  }
+
+  let generating = false;
+
+  function generateDraft() {
+    if (generating) return;
+    generating = true;
+    const out = document.getElementById('genOutput');
+    const btn = document.getElementById('submitDraftBtn');
+    const chips = document.getElementById('refineChips');
+
+    out.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:260px;gap:12px"><div class="loading-dots"><span></span><span></span><span></span></div><div style="font-size:13px;color:var(--ink-soft)">Generating in Founders\' voice...</div></div>';
+    chips.style.display = 'none';
+    btn.disabled = true;
+
+    let i = 0;
+    const text = sampleDraft;
+
+    setTimeout(() => {
+      out.style.cssText = 'background:var(--cream);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13.5px;line-height:1.8;color:var(--ink);min-height:260px;white-space:pre-wrap;font-family:\'DM Sans\',sans-serif;';
+      out.textContent = '';
+
+      const interval = setInterval(() => {
+        if (i < text.length) {
+          out.textContent += text[i];
+          i += 3;
+          out.scrollTop = out.scrollHeight;
+        } else {
+          clearInterval(interval);
+          generating = false;
+          chips.style.display = 'flex';
+          btn.disabled = false;
+          btn.style.display = 'flex';
+        }
+      }, 12);
+    }, 1200);
+  }
+
+  function refine(type) {
+    const out = document.getElementById('genOutput');
+    const msgs = {
+      shorter: 'Making it more concise...',
+      formal: 'Adjusting to a more formal tone...',
+      warmer: 'Adding warmth while keeping credibility...',
+      urgent: 'Adding urgency around the deadline...'
+    };
+    out.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:260px;gap:10px;color:var(--ink-soft);font-size:13px"><div class="loading-dots"><span></span><span></span><span></span></div>${msgs[type]}</div>`;
+    setTimeout(() => generateDraft(), 800);
+  }
+
+  function setMode(mode) {
+    document.getElementById('modeGenerate').classList.toggle('active', mode === 'generate');
+    document.getElementById('modeExisting').classList.toggle('active', mode === 'existing');
+  }
+
+  function updateContextFields() {
+    // Dynamic field updates would go here in production
+  }
+
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    m.addEventListener('click', function(e) {
+      if (e.target === this) this.classList.remove('open');
+    });
+  });
+</script>
+</body>
+</html>

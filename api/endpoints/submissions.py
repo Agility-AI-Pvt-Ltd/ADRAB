@@ -6,7 +6,8 @@ from uuid import UUID
 from fastapi import APIRouter, Query, UploadFile, File
 
 from api.dependencies import CurrentUser, DBSession, FounderOnly
-from models.models import DocumentType, Stakeholder
+from core.exceptions import ForbiddenError
+from models.models import Stakeholder
 from schemas.submission import (
     GenerateDraftRequest,
     RefineDraftRequest,
@@ -14,6 +15,7 @@ from schemas.submission import (
     SubmissionCreate,
     SubmissionResponse,
 )
+from services.document_guidance_service import DocumentGuidanceService
 from services.file_service import FileService
 from services.submission_service import SubmissionService
 
@@ -91,6 +93,16 @@ async def upload_file(
     Text is extracted and returned so the team member can paste it into content.
     """
     file_service = FileService()
+    from db.repositories.submission_repository import SubmissionRepository
+    repo = SubmissionRepository(session)
+    sub = await repo.get_or_raise(submission_id)
+    if current_user.role.value != "team_member":
+        raise ForbiddenError("Only team members can upload files for submissions.")
+    if not current_user.is_active:
+        raise ForbiddenError("Your account is awaiting founder approval. You can view the app, but cannot submit documents yet.")
+    if sub.user_id != current_user.id:
+        raise ForbiddenError("You do not own this submission.")
+
     extracted_text = await file_service.extract_text(file)
 
     # Reset stream, then upload
@@ -98,9 +110,6 @@ async def upload_file(
     file_url, file_name = await file_service.upload(file, current_user.id)
 
     # Persist URL on submission
-    from db.repositories.submission_repository import SubmissionRepository
-    repo = SubmissionRepository(session)
-    sub = await repo.get_or_raise(submission_id)
     await repo.update(sub, file_url=file_url, file_name=file_name)
 
     return {"file_url": file_url, "file_name": file_name, "extracted_text": extracted_text}
@@ -141,11 +150,21 @@ async def review_submission(
 
 # ── Queries ───────────────────────────────────────────────────────────────────
 
+@router.get("/document-guidance")
+async def available_document_guidance(
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """Return the document types available for authenticated users to compose."""
+    service = DocumentGuidanceService(session)
+    await service.ensure_seeded()
+    return await service.list_guidance()
+
 @router.get("/dashboard")
 async def founders_dashboard(
     current_user: CurrentUser,
     session: DBSession,
-    doc_type: Optional[DocumentType] = Query(None),
+    doc_type: Optional[str] = Query(None),
     stakeholder: Optional[Stakeholder] = Query(None),
     user_id: Optional[UUID] = Query(None),
 ):

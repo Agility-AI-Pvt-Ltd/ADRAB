@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from models.models import DocumentType, Stakeholder
+from models.models import AuthProvider, Stakeholder, Submission, SubmissionStatus, UserRole
+from core.security import hash_password
 from schemas.submission import AIScorecardResponse, ScoreBreakdown, AISuggestion
 from tests.conftest import auth_headers
 
@@ -60,7 +61,7 @@ async def test_submit_for_review(client: AsyncClient, team_member):
 
     # Now submit with mocked AI
     with patch(
-        "app.services.submission_service.AIService.review_document",
+        "services.submission_service.AIService.review_document",
         new_callable=AsyncMock,
         return_value=MOCK_SCORECARD,
     ):
@@ -86,7 +87,7 @@ async def test_founder_can_approve(client: AsyncClient, team_member, founder_use
     sub_id = create_resp.json()["id"]
 
     with patch(
-        "app.services.submission_service.AIService.review_document",
+        "services.submission_service.AIService.review_document",
         new_callable=AsyncMock,
         return_value=MOCK_SCORECARD,
     ):
@@ -106,6 +107,16 @@ async def test_founder_can_approve(client: AsyncClient, team_member, founder_use
 
 
 @pytest.mark.asyncio
+async def test_founder_cannot_create_submission(client: AsyncClient, founder_user):
+    resp = await client.post(
+        "/api/v1/submissions/",
+        json=SUBMISSION_PAYLOAD,
+        headers=auth_headers(founder_user),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_team_member_cannot_review(client: AsyncClient, team_member):
     resp = await client.post(
         "/api/v1/submissions/00000000-0000-0000-0000-000000000000/review",
@@ -117,13 +128,13 @@ async def test_team_member_cannot_review(client: AsyncClient, team_member):
 
 @pytest.mark.asyncio
 async def test_team_member_cannot_see_others_submissions(
-    client: AsyncClient, team_member, founder_user
+    client: AsyncClient, team_member, other_team_member
 ):
-    # Founder creates a submission
+    # Another team member creates a submission
     create_resp = await client.post(
         "/api/v1/submissions/",
         json=SUBMISSION_PAYLOAD,
-        headers=auth_headers(founder_user),
+        headers=auth_headers(other_team_member),
     )
     sub_id = create_resp.json()["id"]
 
@@ -131,6 +142,41 @@ async def test_team_member_cannot_see_others_submissions(
     resp = await client.get(
         f"/api/v1/submissions/{sub_id}",
         headers=auth_headers(team_member),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_founder_cannot_review_non_team_member_submission(
+    client: AsyncClient, db_session, founder_user
+):
+    founder_submission_owner = User(
+        name="Second Founder",
+        email="second.founder@agilityai.in",
+        hashed_password=hash_password("password123"),
+        role=UserRole.FOUNDER,
+        auth_provider=AuthProvider.LOCAL,
+    )
+    db_session.add(founder_submission_owner)
+    await db_session.commit()
+    await db_session.refresh(founder_submission_owner)
+
+    submission = Submission(
+        user_id=founder_submission_owner.id,
+        doc_type="cold_email",
+        stakeholder=Stakeholder.PRINCIPAL,
+        content=SUBMISSION_PAYLOAD["content"],
+        status=SubmissionStatus.PENDING,
+        version=1,
+    )
+    db_session.add(submission)
+    await db_session.commit()
+    await db_session.refresh(submission)
+
+    resp = await client.post(
+        f"/api/v1/submissions/{submission.id}/review",
+        json={"action": "approve"},
+        headers=auth_headers(founder_user),
     )
     assert resp.status_code == 403
 

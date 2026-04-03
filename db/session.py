@@ -75,6 +75,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Create all tables (used in tests / local dev; prefer Alembic in prod)."""
+    # Import ORM models so they are registered on Base.metadata before create_all.
+    from models import models  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables initialised.")

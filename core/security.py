@@ -7,25 +7,18 @@ JWT creation/verification, password hashing, and domain enforcement.
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from core.config import settings
 from core.exceptions import AuthenticationError, ForbiddenError
 
-# ---------------------------------------------------------------------------
-# Password hashing
-# ---------------------------------------------------------------------------
-
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
 def hash_password(plain: str) -> str:
-    return _pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -64,8 +57,12 @@ def decode_token(token: str) -> dict[str, Any]:
 
 def enforce_allowed_domain(email: str) -> None:
     """Raise ForbiddenError if the email does not belong to the whitelisted domain."""
-    domain = email.split("@")[-1].lower()
+    normalized_email = email.strip().lower()
+    if normalized_email in settings.ALLOWED_EMAIL_EXCEPTION_LIST:
+        return
+
+    domain = normalized_email.split("@")[-1]
     if domain != settings.ALLOWED_EMAIL_DOMAIN.lower():
         raise ForbiddenError(
-            f"Only @{settings.ALLOWED_EMAIL_DOMAIN} accounts are permitted."
+            f"Only @{settings.ALLOWED_EMAIL_DOMAIN} accounts and approved exception emails are permitted."
         )

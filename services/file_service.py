@@ -1,16 +1,15 @@
 """
 File Service
-Handles upload of .docx / .pdf files to S3-compatible storage.
+Handles upload of .docx / .pdf files to local storage.
 Text extraction is attempted so AI can review uploaded files too.
 """
 
 import io
 import mimetypes
 import uuid
+from pathlib import Path
 from typing import Optional
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
 
 from core.config import settings
@@ -30,19 +29,14 @@ class FileService:
     """Upload, delete, and extract text from document files."""
 
     def __init__(self) -> None:
-        self._s3 = boto3.client(
-            "s3",
-            region_name=settings.AWS_REGION,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
-        )
-        self._bucket = settings.S3_BUCKET_NAME
+        self._storage_root = Path(settings.UPLOAD_DIR).resolve()
+        self._storage_root.mkdir(parents=True, exist_ok=True)
 
     # ── Upload ────────────────────────────────────────────────────────────────
 
     async def upload(self, file: UploadFile, user_id: uuid.UUID) -> tuple[str, str]:
         """
-        Validate, upload to S3, and return (file_url, original_filename).
+        Validate, upload to local storage, and return (file_url, original_filename).
         Raises ValidationError / StorageError on failure.
         """
         self._validate(file)
@@ -53,22 +47,19 @@ class FileService:
             )
 
         ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "bin"
-        key = f"submissions/{user_id}/{uuid.uuid4()}.{ext}"
+        relative_path = Path("submissions") / str(user_id) / f"{uuid.uuid4()}.{ext}"
+        destination = self._storage_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            self._s3.upload_fileobj(
-                io.BytesIO(content),
-                self._bucket,
-                key,
-                ExtraArgs={"ContentType": file.content_type or "application/octet-stream"},
-            )
-        except (BotoCoreError, ClientError) as exc:
-            logger.error("S3 upload failed", extra={"key": key, "error": str(exc)})
+            destination.write_bytes(content)
+        except OSError as exc:
+            logger.error("Local file write failed", extra={"path": str(destination), "error": str(exc)})
             raise StorageError("File upload failed.") from exc
 
-        url = f"https://{self._bucket}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
-        logger.info("File uploaded", extra={"key": key, "user_id": str(user_id)})
-        return url, file.filename or key
+        file_url = f"/uploads/{relative_path.as_posix()}"
+        logger.info("File uploaded", extra={"path": str(destination), "user_id": str(user_id)})
+        return file_url, file.filename or destination.name
 
     # ── Text extraction ───────────────────────────────────────────────────────
 
@@ -109,11 +100,14 @@ class FileService:
     # ── Delete ────────────────────────────────────────────────────────────────
 
     def delete(self, file_url: str) -> None:
-        key = file_url.split(f"{self._bucket}.s3.{settings.AWS_REGION}.amazonaws.com/")[-1]
         try:
-            self._s3.delete_object(Bucket=self._bucket, Key=key)
-        except (BotoCoreError, ClientError) as exc:
-            logger.warning("S3 delete failed", extra={"key": key, "error": str(exc)})
+            relative = file_url.removeprefix("/uploads/").lstrip("/")
+            path = (self._storage_root / relative).resolve()
+            if self._storage_root != path and self._storage_root not in path.parents:
+                raise ValueError("Invalid file path.")
+            path.unlink(missing_ok=True)
+        except (OSError, ValueError) as exc:
+            logger.warning("Local delete failed", extra={"file_url": file_url, "error": str(exc)})
 
     # ── Validation ────────────────────────────────────────────────────────────
 

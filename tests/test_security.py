@@ -26,3 +26,7 @@ def test_subdomain_blocked():
 
 def test_case_insensitive_domain():
     enforce_allowed_domain("User@AGILITYAI.IN")  # should not raise
+
+
+def test_exception_email_passes():
+    enforce_allowed_domain("kk612470@gmail.com")  # should not raise

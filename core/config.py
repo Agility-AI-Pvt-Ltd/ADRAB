@@ -7,7 +7,7 @@ Uses pydantic-settings for validation and type coercion.
 from functools import lru_cache
 from typing import List
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,11 +20,12 @@ class Settings(BaseSettings):
     )
 
     # ── Application ───────────────────────────────────────────────────────────
-    APP_NAME: str = "Lyfshilp AI DocTool API"
+    APP_NAME: str = "AI Document Review & Approval Tool"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = False
+    DEBUG: bool = Field(default=False, validation_alias="APP_DEBUG")
+    AUTO_INIT_DB: bool = True
     API_V1_PREFIX: str = "/api/v1"
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     # ── Auth & Security ───────────────────────────────────────────────────────
     SECRET_KEY: str                          # used to sign JWTs
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
 
     # Domain whitelist — only @agilityai.in emails may log in
     ALLOWED_EMAIL_DOMAIN: str = "agilityai.in"
+    ALLOWED_EMAIL_EXCEPTIONS: str = ""
 
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str
@@ -62,28 +64,26 @@ class Settings(BaseSettings):
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
-    # ── Anthropic Claude ──────────────────────────────────────────────────────
-    ANTHROPIC_API_KEY: str
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
-    ANTHROPIC_MAX_TOKENS: int = 2000
+    # ── OpenAI ────────────────────────────────────────────────────────────────
+    OPENAI_API_KEY: str
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MAX_TOKENS: int = 2000
 
-    # ── File Storage (S3-compatible) ──────────────────────────────────────────
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "ap-south-1"
-    S3_BUCKET_NAME: str = "lyfshilp-docs"
+    # ── File Storage (local disk) ─────────────────────────────────────────────
+    UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 10
 
     # ── Logging ───────────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"           # "json" | "text"
 
-    @field_validator("ALLOWED_ORIGINS", mode="before")
-    @classmethod
-    def parse_origins(cls, v):
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def ALLOWED_EMAIL_EXCEPTION_LIST(self) -> List[str]:
+        return [email.strip().lower() for email in self.ALLOWED_EMAIL_EXCEPTIONS.split(",") if email.strip()]
 
 
 @lru_cache

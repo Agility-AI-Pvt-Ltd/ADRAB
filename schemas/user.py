@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from models.models import AuthProvider, TeamDepartment, UserRole
 
@@ -22,6 +22,21 @@ class UserUpdate(BaseModel):
     department: Optional[TeamDepartment] = None
     is_active: Optional[bool] = None
     role: Optional[UserRole] = None
+
+
+class SelfUserUpdate(BaseModel):
+    name: Optional[str] = None
+    department: Optional[TeamDepartment] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str = Field(min_length=8)
+
+
+class DeleteAccountRequest(BaseModel):
+    confirm_email: EmailStr
+    current_password: Optional[str] = None
 
 
 class UserResponse(BaseModel):

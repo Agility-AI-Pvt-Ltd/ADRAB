@@ -44,7 +44,7 @@ async def get_current_user(
 
     repo = UserRepository(session)
     user = await repo.get(user_id)
-    if user is None or not user.is_active:
+    if user is None:
         raise AuthenticationError("User not found or account is inactive.")
 
     return user

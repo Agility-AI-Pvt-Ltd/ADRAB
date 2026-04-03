@@ -1,4 +1,4 @@
-# Lyfshilp AI DocTool — Backend
+# AI Document Review & Approval Tool — Backend
 
 FastAPI backend for the Lyfshilp Academy AI Document Review & Approval Tool.
 
@@ -12,8 +12,8 @@ FastAPI backend for the Lyfshilp Academy AI Document Review & Approval Tool.
 | Database | PostgreSQL (async via asyncpg) |
 | ORM | SQLAlchemy 2 (async) |
 | Auth | JWT (jose) + Google OAuth 2.0 |
-| AI | Anthropic Claude API |
-| File Storage | AWS S3 |
+| AI | OpenAI API |
+| File Storage | Local disk (`uploads/`) |
 | Config | pydantic-settings |
 
 ---
@@ -54,8 +54,8 @@ lyfshilp-backend/
 │   ├── services/
 │   │   ├── auth_service.py        # Email+password & Google OAuth logic
 │   │   ├── submission_service.py  # Full document lifecycle orchestration
-│   │   ├── ai_service.py          # Anthropic Claude integration
-│   │   ├── file_service.py        # S3 upload + PDF/DOCX text extraction
+│   │   ├── ai_service.py          # OpenAI integration
+│   │   ├── file_service.py        # Local upload + PDF/DOCX text extraction
 │   │   └── system_prompt_service.py
 │   └── utils/
 │       └── exception_handlers.py  # Global FastAPI error handlers
@@ -77,8 +77,9 @@ lyfshilp-backend/
 
 - Python 3.12+
 - PostgreSQL 15+
-- An Anthropic API key
+- An OpenAI API key
 - Google OAuth credentials (for Google sign-in)
+- Writable local storage for uploaded files
 
 ### 2. Clone & Install
 
@@ -104,7 +105,7 @@ SECRET_KEY=<openssl rand -hex 32>
 ALLOWED_EMAIL_DOMAIN=agilityai.in
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
 POSTGRES_PASSWORD=...
 ```
 
@@ -117,10 +118,27 @@ createdb lyfshilp
 # Tables are created automatically on app startup
 ```
 
+To seed the founder-editable document guidance used by AI generation:
+
+```bash
+.venv/bin/python scripts/seed_document_guidance.py
+```
+
+To force-reset those guidance rows back to the default seed content:
+
+```bash
+.venv/bin/python scripts/seed_document_guidance.py --overwrite
+```
+
+The app builds its PostgreSQL connection from the `POSTGRES_*` environment variables.
+
+- For local PostgreSQL: keep `POSTGRES_HOST=localhost` and use your local credentials.
+- For cloud PostgreSQL: change only `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
+
 ### 5. Run
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
 API docs (dev mode only): http://localhost:8000/docs
@@ -152,9 +170,9 @@ POST /api/v1/auth/google/callback   # Exchange code → JWT tokens
 **Flow:**
 1. Frontend calls `GET /auth/google` → gets consent URL
 2. Redirect user to the URL
-3. Google redirects back with `?code=...`
-4. Frontend posts code to `POST /auth/google/callback`
-5. Backend validates email domain, upserts user, returns tokens
+3. Google redirects to the frontend callback route, for example `http://localhost:3000/auth/google/callback?code=...`
+4. Frontend posts the code to `POST /auth/google/callback`
+5. Backend validates the email rule, upserts the user, and returns tokens
 
 ---
 

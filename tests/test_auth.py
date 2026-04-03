@@ -37,6 +37,15 @@ async def test_login_blocked_domain(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_login_exception_email_allowed_but_invalid_credentials(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "kk612470@gmail.com", "password": "password123"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_me_endpoint(client: AsyncClient, team_member):
     resp = await client.get(
         "/api/v1/auth/me",

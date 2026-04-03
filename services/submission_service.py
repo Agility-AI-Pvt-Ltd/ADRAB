@@ -30,6 +30,7 @@ from schemas.submission import (
     SubmissionCreate,
 )
 from services.ai_service import AIService
+from services.document_guidance_service import DocumentGuidanceService
 from services.system_prompt_service import SystemPromptService
 
 logger = get_logger(__name__)
@@ -43,27 +44,34 @@ class SubmissionService:
         self._submission_repo = SubmissionRepository(session)
         self._user_repo = UserRepository(session)
         self._prompt_service = SystemPromptService(session)
+        self._document_guidance_service = DocumentGuidanceService(session)
 
     # ── Draft generation ──────────────────────────────────────────────────────
 
     async def generate_draft(self, request: GenerateDraftRequest, actor: User) -> str:
         """Ask AI to generate a full draft; returns raw document text."""
+        self._require_team_member(actor)
         ai = await self._build_ai_service()
+        guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
         return await ai.generate_draft(
             doc_type=request.doc_type,
             stakeholder=request.stakeholder,
             context=request.context_form_data.fields,
+            guidance=guidance,
         )
 
     async def refine_draft(self, request: RefineDraftRequest, actor: User) -> str:
         """Apply a refinement action (shorter, warmer, etc.) to draft text."""
+        self._require_team_member(actor)
         ai = await self._build_ai_service()
-        return await ai.refine_draft(request)
+        guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
+        return await ai.refine_draft(request, guidance)
 
     # ── Submission lifecycle ──────────────────────────────────────────────────
 
     async def create_submission(self, data: SubmissionCreate, actor: User) -> Submission:
         """Save a new submission as DRAFT (no AI check yet)."""
+        self._require_team_member(actor)
         submission = Submission(
             user_id=actor.id,
             doc_type=data.doc_type,
@@ -79,15 +87,18 @@ class SubmissionService:
 
     async def submit_for_review(self, submission_id: UUID, actor: User) -> Submission:
         """Run AI pre-check then mark submission as PENDING."""
+        self._require_team_member(actor)
         submission = await self._get_owned_submission(submission_id, actor)
         if submission.status not in (SubmissionStatus.DRAFT, SubmissionStatus.REJECTED):
             raise ValidationError("Only draft or rejected submissions can be (re)submitted.")
 
         ai = await self._build_ai_service()
+        guidance = await self._document_guidance_service.render_guidance_block(submission.doc_type)
         scorecard = await ai.review_document(
             content=submission.content,
             doc_type=submission.doc_type,
             stakeholder=submission.stakeholder,
+            guidance=guidance,
         )
 
         await self._submission_repo.update(
@@ -116,6 +127,8 @@ class SubmissionService:
         submission = await self._submission_repo.get_with_relations(submission_id)
         if submission is None:
             raise NotFoundError(f"Submission '{submission_id}' not found.")
+        if submission.author is None or submission.author.role != UserRole.TEAM_MEMBER:
+            raise ForbiddenError("Founders can only review submissions created by team members.")
         if submission.status != SubmissionStatus.PENDING:
             raise ValidationError("Only PENDING submissions can be reviewed.")
 
@@ -158,7 +171,7 @@ class SubmissionService:
         if submission.ai_scorecard:
             ai = await self._build_ai_service()
             ai_note = await ai.generate_rejection_note(
-                submission.ai_scorecard, submission.doc_type.value
+                submission.ai_scorecard, submission.doc_type
             )
 
         await self._submission_repo.update(
@@ -192,6 +205,7 @@ class SubmissionService:
         actor: User,
     ) -> Submission:
         """Create a new version linked to the original rejected submission."""
+        self._require_team_member(actor)
         original = await self._get_owned_submission(original_id, actor)
         if original.status != SubmissionStatus.REJECTED:
             raise ValidationError("Only rejected submissions can be resubmitted.")
@@ -254,6 +268,12 @@ class SubmissionService:
     async def _build_ai_service(self) -> AIService:
         prompt_text = await self._prompt_service.get_active_prompt_text()
         return AIService(system_prompt=prompt_text)
+
+    def _require_team_member(self, actor: User) -> None:
+        if actor.role != UserRole.TEAM_MEMBER:
+            raise ForbiddenError("Only team members can create and submit documents for approval.")
+        if not actor.is_active:
+            raise ForbiddenError("Your account is awaiting founder approval. You can view the app, but cannot submit documents yet.")
 
     async def _log(self, actor: User, action: str, resource_type: str, resource_id: str) -> None:
         log = AuditLog(

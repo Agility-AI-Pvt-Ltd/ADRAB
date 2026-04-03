@@ -42,6 +42,9 @@ class AuthService:
         email = data.email.lower()
         enforce_allowed_domain(email)
 
+        if data.role == UserRole.FOUNDER:
+            raise ForbiddenError("Only an existing founder can create another founder account.")
+
         existing = await self._user_repo.get_by_email(email)
         if existing:
             raise ConflictError(f"Account with email '{email}' already exists.")
@@ -65,7 +68,7 @@ class AuthService:
             raise AuthenticationError("Invalid credentials.")
         if not verify_password(password, user.hashed_password):
             raise AuthenticationError("Invalid credentials.")
-        if not user.is_active:
+        if not user.is_active and user.role != UserRole.TEAM_MEMBER:
             raise ForbiddenError("Your account has been deactivated.")
 
         logger.info("User logged in via email", extra={"user_id": str(user.id)})
@@ -121,7 +124,7 @@ class AuthService:
                 )
                 user = await self._user_repo.create(user)
 
-        if not user.is_active:
+        if not user.is_active and user.role != UserRole.TEAM_MEMBER:
             raise ForbiddenError("Your account has been deactivated.")
 
         logger.info("User logged in via Google", extra={"user_id": str(user.id)})
@@ -133,7 +136,9 @@ class AuthService:
             raise AuthenticationError("Invalid token type.")
 
         user = await self._user_repo.get(payload["sub"])
-        if user is None or not user.is_active:
+        if user is None:
+            raise AuthenticationError("User not found or inactive.")
+        if not user.is_active and user.role != UserRole.TEAM_MEMBER:
             raise AuthenticationError("User not found or inactive.")
 
         return self._issue_tokens(user)

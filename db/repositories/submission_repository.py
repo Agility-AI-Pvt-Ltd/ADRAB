@@ -8,12 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.base_repository import BaseRepository
-from models.models import (
-    DocumentType,
-    Stakeholder,
-    Submission,
-    SubmissionStatus,
-)
+from models.models import Stakeholder, Submission, SubmissionStatus
 
 
 class SubmissionRepository(BaseRepository[Submission]):
@@ -37,7 +32,7 @@ class SubmissionRepository(BaseRepository[Submission]):
 
     async def get_pending_for_founders(
         self,
-        doc_type: Optional[DocumentType] = None,
+        doc_type: Optional[str] = None,
         stakeholder: Optional[Stakeholder] = None,
         user_id: Optional[UUID] = None,
     ) -> List[Submission]:
