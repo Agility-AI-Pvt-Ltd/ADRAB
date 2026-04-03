@@ -25,15 +25,70 @@ type Step = 'type' | 'context' | 'draft' | 'done';
 
 interface Props { onClose: () => void; onCreated: () => void; }
 
+type ContextFieldDef = {
+  key: string;
+  label: string;
+  placeholder: string;
+  required?: boolean;
+  type?: 'text' | 'textarea';
+  readOnly?: boolean;
+};
+
+const DOC_TYPE_CONTEXT_FIELDS: Record<string, ContextFieldDef[]> = {
+  cold_email: [
+    { key: 'recipient_name_designation', label: 'Recipient Name and Designation', placeholder: 'e.g. Ms Priya Sharma, Vice Principal', required: true },
+    { key: 'school_or_company_name', label: 'School or Company Name', placeholder: 'e.g. DPS RK Puram', required: true },
+    { key: 'referral_name', label: 'Referral Name', placeholder: 'e.g. Referred by Rohan Mehta' },
+    { key: 'programme_being_pitched', label: 'Programme Being Pitched', placeholder: 'e.g. AI Scholar Program', required: true },
+    { key: 'specific_ask', label: 'Specific Ask', placeholder: 'e.g. 15-minute demo call next Tuesday', required: true },
+  ],
+  whatsapp: [
+    { key: 'recipient_type', label: 'Recipient Type', placeholder: 'e.g. Parent', required: true, readOnly: true },
+    { key: 'programme_name', label: 'Programme Name', placeholder: 'e.g. Summer AI Programme', required: true },
+    { key: 'key_dates_deadlines', label: 'Key Dates or Deadlines', placeholder: 'e.g. Batch starts 15 May, last date 10 May', required: true, type: 'textarea' },
+    { key: 'payment_or_form_link', label: 'Payment or Form Link', placeholder: 'e.g. https://...', type: 'textarea' },
+  ],
+  proposal: [
+    { key: 'organisation_name', label: 'Organisation Name', placeholder: 'e.g. Mt. Carmel School Dwarka', required: true },
+    { key: 'contact_person', label: 'Contact Person', placeholder: 'e.g. Dr Anjali Verma, Principal', required: true },
+    { key: 'programmes_to_include', label: 'Programmes to Include', placeholder: 'e.g. AI Scholar Program, Teacher AI Workshop', required: true, type: 'textarea' },
+    { key: 'school_specific_customisation', label: 'School-Specific Customisation', placeholder: 'e.g. Focus on Grade 9-12 and NEP alignment', type: 'textarea' },
+  ],
+  linkedin: [
+    { key: 'recipient_name_role', label: 'Recipient Name and Role', placeholder: 'e.g. Aman Gupta, Head of Partnerships', required: true },
+    { key: 'purpose', label: 'Purpose', placeholder: 'e.g. intro / follow-up / partnership', required: true },
+    { key: 'mutual_connection_context', label: 'Mutual Connection or Context', placeholder: 'e.g. Met at TiE event through Neha', type: 'textarea' },
+  ],
+  payment_followup: [
+    { key: 'recipient_name', label: 'Recipient Name', placeholder: 'e.g. Mr Rajesh Kumar', required: true },
+    { key: 'programme_name', label: 'Programme Name', placeholder: 'e.g. Fellowship', required: true },
+    { key: 'amount_due', label: 'Amount Due', placeholder: 'e.g. Rs 10,000', required: true },
+    { key: 'original_deadline', label: 'Original Deadline', placeholder: 'e.g. 12 May 2026', required: true },
+    { key: 'urgency_reason', label: 'Urgency Reason', placeholder: 'e.g. seat confirmation closes tomorrow', required: true, type: 'textarea' },
+  ],
+  ad_creative: [
+    { key: 'platform', label: 'Platform', placeholder: 'e.g. Instagram / WhatsApp / print', required: true },
+    { key: 'target_audience', label: 'Target Audience', placeholder: 'e.g. Parents of Grade 9-12 students', required: true },
+    { key: 'programme_name', label: 'Programme Name', placeholder: 'e.g. Summer AI Programme', required: true },
+    { key: 'key_benefit', label: 'Key Benefit', placeholder: 'e.g. Build real AI projects with mentors', required: true, type: 'textarea' },
+    { key: 'price_deadline', label: 'Price and Deadline', placeholder: 'e.g. Rs 2,999 + GST, enroll by 10 May', required: true },
+  ],
+};
+
+const DEFAULT_CONTEXT_FIELDS: ContextFieldDef[] = [
+  { key: 'context', label: 'Context / Background', placeholder: 'Share the background, recipient, and why this document is needed.', required: true, type: 'textarea' },
+  { key: 'objective', label: 'Objective', placeholder: 'e.g. Schedule a demo call' },
+  { key: 'recipient_name', label: 'Recipient Name / Organisation', placeholder: 'e.g. Ms Priya Sharma, Vice Principal' },
+  { key: 'extra', label: 'Additional Notes', placeholder: 'Any specific asks, tone preferences, or info to include...', type: 'textarea' },
+];
+
 export default function ComposeModal({ onClose, onCreated }: Props) {
   const { toast } = useToast();
   const [docTypes, setDocTypes] = useState<DocumentGuidance[]>([]);
   const [step, setStep] = useState<Step>('type');
   const [docType, setDocType] = useState<DocumentType | null>(null);
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
-  const [contextFields, setContextFields] = useState<Record<string, string>>({
-    context: '', objective: '', recipient_name: '', extra: ''
-  });
+  const [contextFields, setContextFields] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState('');
   const [generating, setGenerating] = useState(false);
   const [refining, setRefining] = useState(false);
@@ -46,6 +101,30 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       .then(({ data }) => setDocTypes(data))
       .catch(() => toast('error', 'Could not load document types'));
   }, []);
+
+  const currentFieldDefs = docType ? (DOC_TYPE_CONTEXT_FIELDS[docType] ?? DEFAULT_CONTEXT_FIELDS) : DEFAULT_CONTEXT_FIELDS;
+
+  useEffect(() => {
+    setContextFields((prev) => {
+      const next: Record<string, string> = {};
+      for (const field of currentFieldDefs) {
+        if (field.key === 'recipient_type') {
+          next[field.key] = stakeholder ? STAKEHOLDERS.find((s) => s.value === stakeholder)?.label ?? stakeholder : '';
+        } else {
+          next[field.key] = prev[field.key] ?? '';
+        }
+      }
+      return next;
+    });
+  }, [docType, stakeholder]);
+
+  function updateContextField(key: string, value: string) {
+    setContextFields((fields) => ({ ...fields, [key]: value }));
+  }
+
+  const canGenerateDraft = currentFieldDefs
+    .filter((field) => field.required)
+    .every((field) => (contextFields[field.key] ?? '').trim());
 
   // Draft generation
   async function generateDraft() {
@@ -186,54 +265,43 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             </span>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Context / Background <span className="required">*</span></label>
-            <textarea
-              className="form-textarea"
-              value={contextFields.context}
-              onChange={e => setContextFields(f => ({ ...f, context: e.target.value }))}
-              placeholder="e.g. We're reaching out to DPS RK Puram about our AI Scholar Program for Grade 11–12 students..."
-              style={{ minHeight: 100 }}
-            />
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <div className="form-group">
-              <label className="form-label">Objective</label>
-              <input
-                className="form-input"
-                value={contextFields.objective}
-                onChange={e => setContextFields(f => ({ ...f, objective: e.target.value }))}
-                placeholder="e.g. Schedule a demo call"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Recipient Name / Organisation</label>
-              <input
-                className="form-input"
-                value={contextFields.recipient_name}
-                onChange={e => setContextFields(f => ({ ...f, recipient_name: e.target.value }))}
-                placeholder="e.g. Ms Priya Sharma, Vice Principal"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Additional Notes</label>
-            <textarea
-              className="form-textarea"
-              value={contextFields.extra}
-              onChange={e => setContextFields(f => ({ ...f, extra: e.target.value }))}
-              placeholder="Any specific asks, tone preferences, or info to include..."
-              style={{ minHeight: 80 }}
-            />
+            {currentFieldDefs.map((field) => (
+              <div
+                key={field.key}
+                className="form-group"
+                style={field.type === 'textarea' ? { gridColumn: '1 / -1' } : undefined}
+              >
+                <label className="form-label">
+                  {field.label} {field.required ? <span className="required">*</span> : null}
+                </label>
+                {field.type === 'textarea' ? (
+                  <textarea
+                    className="form-textarea"
+                    value={contextFields[field.key] ?? ''}
+                    onChange={e => updateContextField(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    style={{ minHeight: field.key === 'key_benefit' || field.key === 'programmes_to_include' || field.key === 'school_specific_customisation' ? 100 : 88 }}
+                    readOnly={field.readOnly}
+                  />
+                ) : (
+                  <input
+                    className="form-input"
+                    value={contextFields[field.key] ?? ''}
+                    onChange={e => updateContextField(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    readOnly={field.readOnly}
+                  />
+                )}
+              </div>
+            ))}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
             <button className="btn btn-outline" onClick={() => setStep('type')}>← Back</button>
             <button
               className="btn btn-primary"
-              disabled={!contextFields.context.trim() || generating}
+              disabled={!canGenerateDraft || generating}
               onClick={generateDraft}
             >
               {generating ? <><Spinner /> Generating…</> : '✦ Generate Draft'}

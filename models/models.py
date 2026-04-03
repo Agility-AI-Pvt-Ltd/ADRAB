@@ -216,6 +216,55 @@ class DocumentGuidance(Base):
 
 
 # ---------------------------------------------------------------------------
+# Stakeholder Guidance (editable per-stakeholder tone rules)
+# ---------------------------------------------------------------------------
+
+class StakeholderGuidance(Base):
+    __tablename__ = "stakeholder_guidance"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    stakeholder: Mapped[Stakeholder] = mapped_column(Enum(Stakeholder), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    guidance_text: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# AI Review Guidance (editable review engine rules)
+# ---------------------------------------------------------------------------
+
+class AIReviewGuidance(Base):
+    __tablename__ = "ai_review_guidance"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    config_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    review_dimension: Mapped[str] = mapped_column(String(150), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Emoji Guidance (editable emoji rules by channel/stakeholder)
+# ---------------------------------------------------------------------------
+
+class EmojiGuidance(Base):
+    __tablename__ = "emoji_guidance"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    config_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # Audit Log
 # ---------------------------------------------------------------------------
 

@@ -5,12 +5,10 @@ The active prompt is loaded on every AI call so changes take effect immediately.
 """
 
 from typing import List, Optional
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.exceptions import NotFoundError
 from core.logging import get_logger
 from models.models import SystemPrompt, User
 from schemas.admin import SystemPromptUpdate
@@ -23,17 +21,27 @@ class SystemPromptService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def ensure_seeded(self) -> SystemPrompt:
+        """Ensure there is at least one active prompt stored in PostgreSQL."""
+        existing = await self.get_active_prompt()
+        if existing is not None:
+            return existing
+
+        seeded = SystemPrompt(
+            prompt_text=DEFAULT_SYSTEM_PROMPT,
+            label="default (seed)",
+            is_active=True,
+        )
+        self._session.add(seeded)
+        await self._session.flush()
+        await self._session.refresh(seeded)
+        logger.info("Seeded default system prompt")
+        return seeded
+
     async def get_active_prompt_text(self) -> str:
         """Return the text of the currently active system prompt, falling back to default."""
-        stmt = (
-            select(SystemPrompt)
-            .where(SystemPrompt.is_active.is_(True))
-            .order_by(SystemPrompt.updated_at.desc())
-            .limit(1)
-        )
-        result = await self._session.execute(stmt)
-        prompt = result.scalar_one_or_none()
-        return prompt.prompt_text if prompt else DEFAULT_SYSTEM_PROMPT
+        prompt = await self.ensure_seeded()
+        return prompt.prompt_text
 
     async def get_active_prompt(self) -> Optional[SystemPrompt]:
         stmt = (

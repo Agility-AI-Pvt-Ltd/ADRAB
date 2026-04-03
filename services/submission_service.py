@@ -30,7 +30,10 @@ from schemas.submission import (
     SubmissionCreate,
 )
 from services.ai_service import AIService
+from services.ai_review_guidance_service import AIReviewGuidanceService
 from services.document_guidance_service import DocumentGuidanceService
+from services.emoji_guidance_service import EmojiGuidanceService
+from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.system_prompt_service import SystemPromptService
 
 logger = get_logger(__name__)
@@ -44,28 +47,33 @@ class SubmissionService:
         self._submission_repo = SubmissionRepository(session)
         self._user_repo = UserRepository(session)
         self._prompt_service = SystemPromptService(session)
+        self._ai_review_guidance_service = AIReviewGuidanceService(session)
         self._document_guidance_service = DocumentGuidanceService(session)
+        self._emoji_guidance_service = EmojiGuidanceService(session)
+        self._stakeholder_guidance_service = StakeholderGuidanceService(session)
 
     # ── Draft generation ──────────────────────────────────────────────────────
 
     async def generate_draft(self, request: GenerateDraftRequest, actor: User) -> str:
         """Ask AI to generate a full draft; returns raw document text."""
         self._require_team_member(actor)
-        ai = await self._build_ai_service()
+        ai = await self._build_ai_service(request.stakeholder)
         guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
+        emoji_guidance = await self._emoji_guidance_service.render_guidance_block(request.doc_type, request.stakeholder)
         return await ai.generate_draft(
             doc_type=request.doc_type,
             stakeholder=request.stakeholder,
             context=request.context_form_data.fields,
-            guidance=guidance,
+            guidance=f"{guidance}\n\n{emoji_guidance}",
         )
 
     async def refine_draft(self, request: RefineDraftRequest, actor: User) -> str:
         """Apply a refinement action (shorter, warmer, etc.) to draft text."""
         self._require_team_member(actor)
-        ai = await self._build_ai_service()
+        ai = await self._build_ai_service(request.stakeholder)
         guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
-        return await ai.refine_draft(request, guidance)
+        emoji_guidance = await self._emoji_guidance_service.render_guidance_block(request.doc_type, request.stakeholder)
+        return await ai.refine_draft(request, f"{guidance}\n\n{emoji_guidance}")
 
     # ── Submission lifecycle ──────────────────────────────────────────────────
 
@@ -92,8 +100,11 @@ class SubmissionService:
         if submission.status not in (SubmissionStatus.DRAFT, SubmissionStatus.REJECTED):
             raise ValidationError("Only draft or rejected submissions can be (re)submitted.")
 
-        ai = await self._build_ai_service()
-        guidance = await self._document_guidance_service.render_guidance_block(submission.doc_type)
+        ai = await self._build_ai_service(submission.stakeholder)
+        document_guidance = await self._document_guidance_service.render_guidance_block(submission.doc_type)
+        emoji_guidance = await self._emoji_guidance_service.render_guidance_block(submission.doc_type, submission.stakeholder)
+        review_guidance = await self._ai_review_guidance_service.render_guidance_block()
+        guidance = f"{document_guidance}\n\n{emoji_guidance}\n\n{review_guidance}"
         scorecard = await ai.review_document(
             content=submission.content,
             doc_type=submission.doc_type,
@@ -265,8 +276,11 @@ class SubmissionService:
             raise ForbiddenError("You do not own this submission.")
         return sub
 
-    async def _build_ai_service(self) -> AIService:
+    async def _build_ai_service(self, stakeholder=None) -> AIService:
         prompt_text = await self._prompt_service.get_active_prompt_text()
+        if stakeholder is not None:
+            stakeholder_block = await self._stakeholder_guidance_service.render_guidance_block(stakeholder)
+            prompt_text = f"{prompt_text}\n\n{stakeholder_block}"
         return AIService(system_prompt=prompt_text)
 
     def _require_team_member(self, actor: User) -> None:

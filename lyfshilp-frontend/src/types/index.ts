@@ -109,6 +109,31 @@ export interface SystemPrompt {
   updated_at: string | null;
 }
 
+export interface StakeholderGuidance {
+  id: string;
+  stakeholder: Stakeholder;
+  title: string;
+  guidance_text: string;
+  updated_at: string;
+}
+
+export interface AIReviewGuidance {
+  id: string;
+  config_key: string;
+  review_dimension: string;
+  title: string;
+  content: string;
+  updated_at: string;
+}
+
+export interface EmojiGuidance {
+  id: string;
+  config_key: string;
+  title: string;
+  content: string;
+  updated_at: string;
+}
+
 export interface AuditLog {
   id: string;
   actor_id: string | null;

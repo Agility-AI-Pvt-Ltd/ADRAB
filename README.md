@@ -130,6 +130,30 @@ To force-reset those guidance rows back to the default seed content:
 .venv/bin/python scripts/seed_document_guidance.py --overwrite
 ```
 
+To seed the founder-editable AI system prompt used for generation and review:
+
+```bash
+.venv/bin/python scripts/seed_system_prompt.py
+```
+
+To force-reset the active system prompt back to the default seeded stakeholder rules:
+
+```bash
+.venv/bin/python scripts/seed_system_prompt.py --overwrite
+```
+
+To seed the founder-editable stakeholder tone rules used during generation and review:
+
+```bash
+.venv/bin/python scripts/seed_stakeholder_guidance.py
+```
+
+To force-reset those stakeholder rules:
+
+```bash
+.venv/bin/python scripts/seed_stakeholder_guidance.py --overwrite
+```
+
 The app builds its PostgreSQL connection from the `POSTGRES_*` environment variables.
 
 - For local PostgreSQL: keep `POSTGRES_HOST=localhost` and use your local credentials.

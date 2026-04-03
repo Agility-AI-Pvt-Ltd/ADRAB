@@ -7,15 +7,25 @@ from sqlalchemy import desc, select
 
 from api.dependencies import CurrentUser, DBSession, FounderOnly
 from models.models import AuditLog
+from models.models import Stakeholder
 from schemas.admin import (
+    AIReviewGuidanceResponse,
+    AIReviewGuidanceUpdate,
     AuditLogResponse,
     DocumentGuidanceCreate,
     DocumentGuidanceResponse,
     DocumentGuidanceUpdate,
+    EmojiGuidanceResponse,
+    EmojiGuidanceUpdate,
+    StakeholderGuidanceResponse,
+    StakeholderGuidanceUpdate,
     SystemPromptResponse,
     SystemPromptUpdate,
 )
+from services.ai_review_guidance_service import AIReviewGuidanceService
 from services.document_guidance_service import DocumentGuidanceService
+from services.emoji_guidance_service import EmojiGuidanceService
+from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.system_prompt_service import SystemPromptService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -27,11 +37,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 async def get_active_prompt(session: DBSession):
     """Return the currently active AI system prompt."""
     service = SystemPromptService(session)
-    prompt = await service.get_active_prompt()
-    if prompt is None:
-        from services.ai_service import DEFAULT_SYSTEM_PROMPT
-        return {"id": None, "prompt_text": DEFAULT_SYSTEM_PROMPT, "label": "default (seed)", "is_active": True, "updated_at": None}
-    return prompt
+    return await service.ensure_seeded()
 
 
 @router.put("/system-prompt", response_model=SystemPromptResponse, dependencies=[FounderOnly])
@@ -53,6 +59,66 @@ async def prompt_history(session: DBSession):
     """List all historical system prompt versions."""
     service = SystemPromptService(session)
     return await service.list_prompts()
+
+
+@router.get("/stakeholder-guidance", response_model=List[StakeholderGuidanceResponse], dependencies=[FounderOnly])
+async def list_stakeholder_guidance(session: DBSession):
+    """Return editable stakeholder-specific tone rules."""
+    service = StakeholderGuidanceService(session)
+    await service.ensure_seeded()
+    return await service.list_guidance()
+
+
+@router.put("/stakeholder-guidance/{stakeholder}", response_model=StakeholderGuidanceResponse, dependencies=[FounderOnly])
+async def update_stakeholder_guidance(
+    stakeholder: Stakeholder,
+    body: StakeholderGuidanceUpdate,
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """Update founder-managed stakeholder tone rules."""
+    service = StakeholderGuidanceService(session)
+    return await service.update_guidance(stakeholder, body, current_user)
+
+
+@router.get("/ai-review-guidance", response_model=List[AIReviewGuidanceResponse], dependencies=[FounderOnly])
+async def list_ai_review_guidance(session: DBSession):
+    """Return editable AI review engine rules."""
+    service = AIReviewGuidanceService(session)
+    await service.ensure_seeded()
+    return await service.list_guidance()
+
+
+@router.put("/ai-review-guidance/{config_key}", response_model=AIReviewGuidanceResponse, dependencies=[FounderOnly])
+async def update_ai_review_guidance(
+    config_key: str,
+    body: AIReviewGuidanceUpdate,
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """Update founder-managed AI review engine rules."""
+    service = AIReviewGuidanceService(session)
+    return await service.update_guidance(config_key, body, current_user)
+
+
+@router.get("/emoji-guidance", response_model=List[EmojiGuidanceResponse], dependencies=[FounderOnly])
+async def list_emoji_guidance(session: DBSession):
+    """Return editable emoji usage rules."""
+    service = EmojiGuidanceService(session)
+    await service.ensure_seeded()
+    return await service.list_guidance()
+
+
+@router.put("/emoji-guidance/{config_key}", response_model=EmojiGuidanceResponse, dependencies=[FounderOnly])
+async def update_emoji_guidance(
+    config_key: str,
+    body: EmojiGuidanceUpdate,
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """Update founder-managed emoji usage rules."""
+    service = EmojiGuidanceService(session)
+    return await service.update_guidance(config_key, body, current_user)
 
 
 @router.get("/document-guidance", response_model=List[DocumentGuidanceResponse], dependencies=[FounderOnly])

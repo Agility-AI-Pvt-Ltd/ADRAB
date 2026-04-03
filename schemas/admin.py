@@ -57,3 +57,50 @@ class DocumentGuidanceResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class StakeholderGuidanceUpdate(BaseModel):
+    title: str
+    guidance_text: str
+
+
+class StakeholderGuidanceResponse(BaseModel):
+    id: uuid.UUID
+    stakeholder: str
+    title: str
+    guidance_text: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AIReviewGuidanceUpdate(BaseModel):
+    review_dimension: str
+    title: str
+    content: str
+
+
+class AIReviewGuidanceResponse(BaseModel):
+    id: uuid.UUID
+    config_key: str
+    review_dimension: str
+    title: str
+    content: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmojiGuidanceUpdate(BaseModel):
+    title: str
+    content: str
+
+
+class EmojiGuidanceResponse(BaseModel):
+    id: uuid.UUID
+    config_key: str
+    title: str
+    content: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

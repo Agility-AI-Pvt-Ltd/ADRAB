@@ -15,7 +15,11 @@ from api.router import api_router
 from core.config import settings
 from core.logging import configure_logging, get_logger
 from db.session import close_db, get_db_context, init_db
+from services.ai_review_guidance_service import AIReviewGuidanceService
 from services.document_guidance_service import DocumentGuidanceService
+from services.emoji_guidance_service import EmojiGuidanceService
+from services.stakeholder_guidance_service import StakeholderGuidanceService
+from services.system_prompt_service import SystemPromptService
 from utils.exception_handlers import register_exception_handlers
 
 logger = get_logger(__name__)
@@ -31,7 +35,11 @@ async def lifespan(app: FastAPI):
         # In local/dev, auto-create tables. Set AUTO_INIT_DB=false to require migrations.
         await init_db()
         async with get_db_context() as session:
+            await AIReviewGuidanceService(session).ensure_seeded()
             await DocumentGuidanceService(session).ensure_seeded()
+            await EmojiGuidanceService(session).ensure_seeded()
+            await StakeholderGuidanceService(session).ensure_seeded()
+            await SystemPromptService(session).ensure_seeded()
 
     yield
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type {
   TokenResponse, User, Submission, DashboardData,
-  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance
+  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -111,6 +111,15 @@ export const adminApi = {
   updateSystemPrompt: (prompt_text: string, label?: string) =>
     client.put<SystemPrompt>('/admin/system-prompt', { prompt_text, label }),
   promptHistory: () => client.get<SystemPrompt[]>('/admin/system-prompt/history'),
+  stakeholderGuidance: () => client.get<StakeholderGuidance[]>('/admin/stakeholder-guidance'),
+  updateStakeholderGuidance: (stakeholder: Stakeholder, body: Pick<StakeholderGuidance, 'title' | 'guidance_text'>) =>
+    client.put<StakeholderGuidance>(`/admin/stakeholder-guidance/${stakeholder}`, body),
+  aiReviewGuidance: () => client.get<AIReviewGuidance[]>('/admin/ai-review-guidance'),
+  updateAiReviewGuidance: (configKey: string, body: Pick<AIReviewGuidance, 'review_dimension' | 'title' | 'content'>) =>
+    client.put<AIReviewGuidance>(`/admin/ai-review-guidance/${configKey}`, body),
+  emojiGuidance: () => client.get<EmojiGuidance[]>('/admin/emoji-guidance'),
+  updateEmojiGuidance: (configKey: string, body: Pick<EmojiGuidance, 'title' | 'content'>) =>
+    client.put<EmojiGuidance>(`/admin/emoji-guidance/${configKey}`, body),
   documentGuidance: () => client.get<DocumentGuidance[]>('/admin/document-guidance'),
   createDocumentGuidance: (body: Pick<DocumentGuidance, 'doc_type' | 'title' | 'description' | 'key_requirements'>) =>
     client.post<DocumentGuidance>('/admin/document-guidance', body),

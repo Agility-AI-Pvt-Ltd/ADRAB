@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { ToastProvider, ApprovalBanner } from './components/shared';
 import Sidebar from './components/Sidebar';
@@ -32,7 +32,8 @@ function AppShell() {
     '/admin/system-prompt': 'Brand Voice',
     '/admin/audit-log': 'Audit Log',
   };
-  const title = PAGE_TITLES[window.location.pathname] ?? 'AI Document Review & Approval Tool';
+  const location = useLocation();
+  const title = PAGE_TITLES[location.pathname] ?? 'AI Document Review & Approval Tool';
 
   return (
     <ToastProvider>
