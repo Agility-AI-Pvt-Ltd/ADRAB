@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
 import { adminApi, submissionsApi } from '../api';
 import type { DocumentGuidance, DocumentType, Stakeholder } from '../types';
@@ -82,6 +83,53 @@ const DEFAULT_CONTEXT_FIELDS: ContextFieldDef[] = [
   { key: 'extra', label: 'Additional Notes', placeholder: 'Any specific asks, tone preferences, or info to include...', type: 'textarea' },
 ];
 
+const EXTRA_CONTEXT_FIELD: ContextFieldDef = {
+  key: 'additional_context',
+  label: 'Additional Context',
+  placeholder: 'Paste any extra notes, message snippets, background details, objections, or important context that does not fit in the fields above.',
+  type: 'textarea',
+};
+
+// ---------------------------------------------------------------------------
+// Helper: auto-growing textarea that uses Pretext.js for height calculation.
+// Each instance creates its own resize ref bound to its specific content.
+// ---------------------------------------------------------------------------
+function AutoTextarea({
+  value,
+  onChange,
+  placeholder,
+  readOnly,
+  disabled,
+  minHeight = 80,
+  maxHeight = 400,
+  style,
+  className,
+}: {
+  value: string;
+  onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+  disabled?: boolean;
+  minHeight?: number;
+  maxHeight?: number;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  const ref = useAutoResize(value, { minHeight, maxHeight });
+  return (
+    <textarea
+      ref={ref}
+      className={className ?? 'form-textarea'}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      disabled={disabled}
+      style={{ resize: 'none', transition: 'height 0.15s ease', ...style }}
+    />
+  );
+}
+
 export default function ComposeModal({ onClose, onCreated }: Props) {
   const { toast } = useToast();
   const [docTypes, setDocTypes] = useState<DocumentGuidance[]>([]);
@@ -96,6 +144,9 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Pretext-powered auto-resize ref for the draft textarea
+  const draftRef = useAutoResize(draft, { minHeight: 260, maxHeight: 560 });
+
   useEffect(() => {
     submissionsApi.documentGuidance()
       .then(({ data }) => setDocTypes(data))
@@ -103,11 +154,14 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   }, []);
 
   const currentFieldDefs = docType ? (DOC_TYPE_CONTEXT_FIELDS[docType] ?? DEFAULT_CONTEXT_FIELDS) : DEFAULT_CONTEXT_FIELDS;
+  const visibleFieldDefs = currentFieldDefs.some((field) => field.key === EXTRA_CONTEXT_FIELD.key)
+    ? currentFieldDefs
+    : [...currentFieldDefs, EXTRA_CONTEXT_FIELD];
 
   useEffect(() => {
     setContextFields((prev) => {
       const next: Record<string, string> = {};
-      for (const field of currentFieldDefs) {
+      for (const field of visibleFieldDefs) {
         if (field.key === 'recipient_type') {
           next[field.key] = stakeholder ? STAKEHOLDERS.find((s) => s.value === stakeholder)?.label ?? stakeholder : '';
         } else {
@@ -116,13 +170,13 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       }
       return next;
     });
-  }, [docType, stakeholder]);
+  }, [visibleFieldDefs, stakeholder]);
 
   function updateContextField(key: string, value: string) {
     setContextFields((fields) => ({ ...fields, [key]: value }));
   }
 
-  const canGenerateDraft = currentFieldDefs
+  const canGenerateDraft = visibleFieldDefs
     .filter((field) => field.required)
     .every((field) => (contextFields[field.key] ?? '').trim());
 
@@ -266,7 +320,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            {currentFieldDefs.map((field) => (
+            {visibleFieldDefs.map((field) => (
               <div
                 key={field.key}
                 className="form-group"
@@ -276,13 +330,12 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                   {field.label} {field.required ? <span className="required">*</span> : null}
                 </label>
                 {field.type === 'textarea' ? (
-                  <textarea
-                    className="form-textarea"
+                  <AutoTextarea
                     value={contextFields[field.key] ?? ''}
                     onChange={e => updateContextField(field.key, e.target.value)}
                     placeholder={field.placeholder}
-                    style={{ minHeight: field.key === 'key_benefit' || field.key === 'programmes_to_include' || field.key === 'school_specific_customisation' ? 100 : 88 }}
                     readOnly={field.readOnly}
+                    minHeight={field.key === 'key_benefit' || field.key === 'programmes_to_include' || field.key === 'school_specific_customisation' ? 100 : field.key === EXTRA_CONTEXT_FIELD.key ? 140 : 88}
                   />
                 ) : (
                   <input
@@ -328,14 +381,15 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             ))}
           </div>
 
-          {/* Editable draft */}
+          {/* Editable draft — Pretext auto-resizes to fit content exactly */}
           <div className="form-group">
             <label className="form-label">Draft Content</label>
             <textarea
+              ref={draftRef}
               className="form-textarea"
               value={draft}
               onChange={e => setDraft(e.target.value)}
-              style={{ minHeight: 260 }}
+              style={{ minHeight: 260, resize: 'none', transition: 'height 0.15s ease' }}
               disabled={refining}
             />
           </div>

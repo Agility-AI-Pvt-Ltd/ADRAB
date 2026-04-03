@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { submissionsApi, usersApi } from '../api';
-import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar } from '../components/shared';
+import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar, TextPreview } from '../components/shared';
 import SubmissionDetail from '../components/SubmissionDetail';
 import type { DashboardData, Submission, User } from '../types';
 
@@ -190,6 +190,7 @@ export default function Dashboard() {
             <thead>
               <tr>
                 <th>Author</th>
+                <th>Preview</th>
                 <th>Type</th>
                 <th>Stakeholder</th>
                 <th>AI Score</th>
@@ -207,6 +208,9 @@ export default function Dashboard() {
                       <Avatar name={s.author?.name} email={s.author?.email} size="sm" />
                       <span>{s.author?.name ?? 'Unknown user'}</span>
                     </div>
+                  </td>
+                  <td style={{ maxWidth: 220 }}>
+                    <TextPreview text={s.content} maxLines={2} containerWidth={200} />
                   </td>
                   <td><DocTypeChip type={s.doc_type} /></td>
                   <td style={{ textTransform: 'capitalize' }}>{s.stakeholder}</td>

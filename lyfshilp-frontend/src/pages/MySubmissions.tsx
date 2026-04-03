@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { submissionsApi } from '../api';
-import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, ApprovalBanner } from '../components/shared';
+import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, ApprovalBanner, TextPreview } from '../components/shared';
 import SubmissionDetail from '../components/SubmissionDetail';
 import ComposeModal from '../components/ComposeModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -107,6 +107,7 @@ export default function MySubmissions() {
             <thead>
               <tr>
                 <th>Type</th>
+                <th>Preview</th>
                 <th>Stakeholder</th>
                 <th>AI Score</th>
                 <th>Status</th>
@@ -119,6 +120,9 @@ export default function MySubmissions() {
               {filtered.map(s => (
                 <tr key={s.id}>
                   <td><DocTypeChip type={s.doc_type} /></td>
+                  <td style={{ maxWidth: 240 }}>
+                    <TextPreview text={s.content} maxLines={2} containerWidth={220} />
+                  </td>
                   <td style={{ textTransform: 'capitalize' }}>{s.stakeholder}</td>
                   <td><ScoreBadge score={s.ai_score} /></td>
                   <td><StatusBadge status={s.status} /></td>

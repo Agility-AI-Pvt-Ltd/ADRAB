@@ -18,6 +18,7 @@ from db.session import close_db, get_db_context, init_db
 from services.ai_review_guidance_service import AIReviewGuidanceService
 from services.document_guidance_service import DocumentGuidanceService
 from services.emoji_guidance_service import EmojiGuidanceService
+from services.few_shot_example_service import FewShotExampleService
 from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.system_prompt_service import SystemPromptService
 from utils.exception_handlers import register_exception_handlers
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
             await AIReviewGuidanceService(session).ensure_seeded()
             await DocumentGuidanceService(session).ensure_seeded()
             await EmojiGuidanceService(session).ensure_seeded()
+            await FewShotExampleService(session).ensure_seeded()
             await StakeholderGuidanceService(session).ensure_seeded()
             await SystemPromptService(session).ensure_seeded()
 

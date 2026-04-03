@@ -199,6 +199,27 @@ class SystemPrompt(Base):
 
 
 # ---------------------------------------------------------------------------
+# Knowledge Snippets (reusable factual context for LLM prompts)
+# ---------------------------------------------------------------------------
+
+class KnowledgeSnippet(Base):
+    __tablename__ = "knowledge_snippets"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_knowledge_snippets_slug"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    slug: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # Document Guidance (editable per-document-type writing rules)
 # ---------------------------------------------------------------------------
 
@@ -210,6 +231,29 @@ class DocumentGuidance(Base):
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     key_requirements: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Few-shot Examples (editable examples used during AI drafting)
+# ---------------------------------------------------------------------------
+
+class FewShotExample(Base):
+    __tablename__ = "few_shot_examples"
+    __table_args__ = (
+        UniqueConstraint("doc_type", "stakeholder", "title", name="uq_few_shot_examples_scope_title"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    doc_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    stakeholder: Mapped[Stakeholder] = mapped_column(Enum(Stakeholder), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    input_context: Mapped[str] = mapped_column(Text, nullable=False)
+    output_text: Mapped[str] = mapped_column(Text, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)

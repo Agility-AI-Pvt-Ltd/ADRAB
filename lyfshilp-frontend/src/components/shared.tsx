@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React from 'react';
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,51 @@ export function fmtDate(iso: string) {
 
 export function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── TextPreview ───────────────────────────────────────────────────────────────
+// Renders a clamped snippet for table cells. Uses @chenglou/pretext to detect
+// overflow via pure arithmetic — zero DOM reads, zero forced layout reflow.
+import { prepare, layout } from '@chenglou/pretext';
+
+export function TextPreview({
+  text,
+  maxLines = 2,
+  containerWidth = 300,
+  fontSize = 12,
+  lineHeightRatio = 1.6,
+  style,
+}: {
+  text: string;
+  maxLines?: number;
+  containerWidth?: number;
+  fontSize?: number;
+  lineHeightRatio?: number;
+  style?: React.CSSProperties;
+}) {
+  const lineHeightPx = fontSize * lineHeightRatio;
+  const clampHeight  = maxLines * lineHeightPx;
+  const prepared     = prepare(text || ' ', `${fontSize}px Inter, sans-serif`);
+  const { lineCount } = layout(prepared, containerWidth, lineHeightPx);
+  const isTruncated  = lineCount > maxLines;
+
+  return (
+    <div
+      style={{
+        fontSize,
+        lineHeight: lineHeightRatio,
+        color: 'var(--ink-soft)',
+        maxHeight: `${clampHeight}px`,
+        overflow: 'hidden',
+        maskImage: isTruncated ? 'linear-gradient(to bottom, black 50%, transparent 100%)' : undefined,
+        WebkitMaskImage: isTruncated ? 'linear-gradient(to bottom, black 50%, transparent 100%)' : undefined,
+        ...style,
+      }}
+      title={text}
+    >
+      {text}
+    </div>
+  );
 }
 
 export function ApprovalBanner({ isFounder }: { isFounder?: boolean }) {

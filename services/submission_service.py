@@ -33,6 +33,8 @@ from services.ai_service import AIService
 from services.ai_review_guidance_service import AIReviewGuidanceService
 from services.document_guidance_service import DocumentGuidanceService
 from services.emoji_guidance_service import EmojiGuidanceService
+from services.few_shot_example_service import FewShotExampleService
+from services.knowledge_snippet_service import KnowledgeSnippetService
 from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.system_prompt_service import SystemPromptService
 
@@ -50,6 +52,8 @@ class SubmissionService:
         self._ai_review_guidance_service = AIReviewGuidanceService(session)
         self._document_guidance_service = DocumentGuidanceService(session)
         self._emoji_guidance_service = EmojiGuidanceService(session)
+        self._few_shot_example_service = FewShotExampleService(session)
+        self._knowledge_snippet_service = KnowledgeSnippetService(session)
         self._stakeholder_guidance_service = StakeholderGuidanceService(session)
 
     # ── Draft generation ──────────────────────────────────────────────────────
@@ -60,11 +64,15 @@ class SubmissionService:
         ai = await self._build_ai_service(request.stakeholder)
         guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
         emoji_guidance = await self._emoji_guidance_service.render_guidance_block(request.doc_type, request.stakeholder)
+        few_shot_examples = await self._few_shot_example_service.render_examples_block(request.doc_type, request.stakeholder)
+        assembled_guidance = "\n\n".join(
+            block for block in (guidance, emoji_guidance, few_shot_examples) if block
+        )
         return await ai.generate_draft(
             doc_type=request.doc_type,
             stakeholder=request.stakeholder,
             context=request.context_form_data.fields,
-            guidance=f"{guidance}\n\n{emoji_guidance}",
+            guidance=assembled_guidance,
         )
 
     async def refine_draft(self, request: RefineDraftRequest, actor: User) -> str:
@@ -73,7 +81,11 @@ class SubmissionService:
         ai = await self._build_ai_service(request.stakeholder)
         guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
         emoji_guidance = await self._emoji_guidance_service.render_guidance_block(request.doc_type, request.stakeholder)
-        return await ai.refine_draft(request, f"{guidance}\n\n{emoji_guidance}")
+        few_shot_examples = await self._few_shot_example_service.render_examples_block(request.doc_type, request.stakeholder)
+        assembled_guidance = "\n\n".join(
+            block for block in (guidance, emoji_guidance, few_shot_examples) if block
+        )
+        return await ai.refine_draft(request, assembled_guidance)
 
     # ── Submission lifecycle ──────────────────────────────────────────────────
 
@@ -278,6 +290,9 @@ class SubmissionService:
 
     async def _build_ai_service(self, stakeholder=None) -> AIService:
         prompt_text = await self._prompt_service.get_active_prompt_text()
+        knowledge_block = await self._knowledge_snippet_service.render_prompt_block()
+        if knowledge_block:
+            prompt_text = f"{prompt_text}\n\n{knowledge_block}"
         if stakeholder is not None:
             stakeholder_block = await self._stakeholder_guidance_service.render_guidance_block(stakeholder)
             prompt_text = f"{prompt_text}\n\n{stakeholder_block}"

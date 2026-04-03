@@ -3,6 +3,8 @@ import { Modal, StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useT
 import { submissionsApi } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Submission } from '../types';
+import { useAutoResize } from '../hooks/useAutoResize';
+import { useTextMeasure } from '../hooks/useTextMeasure';
 
 interface Props {
   submission: Submission;
@@ -18,6 +20,9 @@ const DIM_LABELS: Record<string, string> = {
   improvement_scope: 'Improvement Scope',
 };
 
+// Collapsible content display — collapse threshold (lines)
+const COLLAPSE_LINES = 7;
+
 export default function SubmissionDetail({ submission, onClose, onUpdated }: Props) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -30,6 +35,23 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
   const [submitting, setSubmitting] = useState(false);
   const [resubmitContent, setResubmitContent] = useState(submission.content);
   const [resubmitting, setResubmitting] = useState(false);
+  const [contentExpanded, setContentExpanded] = useState(false);
+
+  // Pretext.js — measure content text at ~620px (modal content width minus padding)
+  // Returns lineCount via pure arithmetic after one-time Canvas prepare()
+  const CONTENT_WIDTH = 620;
+  const { lineCount: contentLines } = useTextMeasure(
+    submission.content,
+    CONTENT_WIDTH,
+    { fontSize: 13, lineHeightRatio: 1.7, fontFamily: 'Inter, sans-serif' }
+  );
+  const contentIsLong = contentLines > COLLAPSE_LINES;
+  const collapsedHeight = COLLAPSE_LINES * (13 * 1.7); // px
+
+  // Auto-resize refs for all editable textareas
+  const editedContentRef = useAutoResize(editedContent, { minHeight: 200, maxHeight: 500 });
+  const founderNoteRef   = useAutoResize(founderNote, { minHeight: 100, maxHeight: 300 });
+  const resubmitRef      = useAutoResize(resubmitContent, { minHeight: 220, maxHeight: 500 });
 
   const scorecard = submission.ai_scorecard;
   const dimensions = scorecard?.dimensions;
@@ -140,11 +162,62 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
         )}
       </div>
 
-      {/* Content tab */}
+      {/* Content tab — Pretext-measured collapsible display */}
       {tab === 'content' && (
         <div>
-          <div className="detail-section-title">Document Content</div>
-          <div className="content-display">{submission.content}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div className="detail-section-title" style={{ marginBottom: 0 }}>Document Content</div>
+            {contentIsLong && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontSize: 11,
+                  color: 'var(--ink-soft)',
+                  fontFamily: 'DM Mono, monospace',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding: '2px 7px',
+                }}>
+                  {contentLines} lines
+                </span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setContentExpanded(e => !e)}
+                  style={{ fontSize: 12, padding: '3px 10px' }}
+                >
+                  {contentExpanded ? '▲ Show less' : '▼ Show more'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Height animates between collapsed (Pretext) and auto */}
+          <div
+            className="content-display"
+            style={{
+              maxHeight: contentIsLong && !contentExpanded ? `${collapsedHeight}px` : undefined,
+              overflow: contentIsLong && !contentExpanded ? 'hidden' : 'visible',
+              maskImage: contentIsLong && !contentExpanded
+                ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
+                : undefined,
+              WebkitMaskImage: contentIsLong && !contentExpanded
+                ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
+                : undefined,
+              transition: 'max-height 0.25s ease',
+            }}
+          >
+            {submission.content}
+          </div>
+
+          {contentIsLong && !contentExpanded && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setContentExpanded(true)}
+              style={{ marginTop: 6, fontSize: 12 }}
+            >
+              ▼ Show full content ({contentLines} lines)
+            </button>
+          )}
 
           {submission.feedback?.founder_note && (
             <div style={{ marginTop: 16 }}>
@@ -248,11 +321,13 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           {reviewAction === 'approve_with_edits' && (
             <div className="form-group">
               <label className="form-label">Edited Content</label>
+              {/* Pretext auto-resize: grows to fit content, no fixed height guessing */}
               <textarea
+                ref={editedContentRef}
                 className="form-textarea"
                 value={editedContent}
                 onChange={e => setEditedContent(e.target.value)}
-                style={{ minHeight: 200 }}
+                style={{ minHeight: 200, resize: 'none', transition: 'height 0.15s ease' }}
               />
             </div>
           )}
@@ -260,11 +335,12 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           <div className="form-group">
             <label className="form-label">Note to Team Member <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>(optional)</span></label>
             <textarea
+              ref={founderNoteRef}
               className="form-textarea"
               value={founderNote}
               onChange={e => setFounderNote(e.target.value)}
               placeholder="Add context, guidance, or praise..."
-              style={{ minHeight: 100 }}
+              style={{ minHeight: 100, resize: 'none', transition: 'height 0.15s ease' }}
             />
           </div>
 
@@ -288,10 +364,11 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           <div className="form-group">
             <label className="form-label">Revised Content</label>
             <textarea
+              ref={resubmitRef}
               className="form-textarea"
               value={resubmitContent}
               onChange={e => setResubmitContent(e.target.value)}
-              style={{ minHeight: 220 }}
+              style={{ minHeight: 220, resize: 'none', transition: 'height 0.15s ease' }}
             />
           </div>
           <button
