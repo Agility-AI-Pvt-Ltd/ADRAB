@@ -194,6 +194,7 @@ class Visibility(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     visible_to_roles: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    visible_to_departments: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     visible_to_user_ids: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 

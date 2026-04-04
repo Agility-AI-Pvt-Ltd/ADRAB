@@ -4,6 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Query, UploadFile, File
+from fastapi.responses import FileResponse
 
 from api.dependencies import CurrentUser, DBSession, FounderOnly
 from core.exceptions import ForbiddenError
@@ -15,6 +16,7 @@ from schemas.submission import (
     ReviewAction,
     SubmissionCreate,
     SubmissionResponse,
+    VisibilityUpdateRequest,
 )
 from services.document_guidance_service import DocumentGuidanceService
 from services.file_service import FileService
@@ -161,6 +163,34 @@ async def review_submission(
     """
     service = SubmissionService(session)
     return await service.review(submission_id, body, current_user)
+
+
+@router.patch(
+    "/{submission_id}/visibility",
+    response_model=SubmissionResponse,
+    dependencies=[FounderOnly],
+)
+async def update_submission_visibility(
+    submission_id: UUID,
+    body: VisibilityUpdateRequest,
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """
+    Founder action: update visibility for an already approved submission.
+    """
+    service = SubmissionService(session)
+    return await service.update_visibility(submission_id, body, current_user)
+
+
+@router.get("/{submission_id}/download-file", response_class=FileResponse)
+async def download_submission_file(
+    submission_id: UUID,
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    service = SubmissionService(session)
+    return await service.download_submission_file(submission_id, current_user)
 
 
 # ── Queries ───────────────────────────────────────────────────────────────────

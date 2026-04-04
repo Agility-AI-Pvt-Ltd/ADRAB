@@ -30,7 +30,13 @@ function yPos(dateStr: string) {
   return (decimalHour - START_HOUR) * 80;
 }
 
-export default function CalendarTimeline({ submissions }: { submissions: Submission[] }) {
+export default function CalendarTimeline({
+  submissions,
+  onSelect,
+}: {
+  submissions: Submission[];
+  onSelect?: (submission: Submission) => void;
+}) {
   const [baseDate] = useState(new Date());
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -125,15 +131,27 @@ export default function CalendarTimeline({ submissions }: { submissions: Submiss
                   const top = yPos(sub.submitted_at ?? sub.created_at);
                   if (top === null) return null;
 
-                  // Stagger colors based on simple hash
-                  const colorThemes = ['blue', 'gray'];
-                  const theme = sub.ai_score && sub.ai_score > 75 ? 'blue' : 'gray';
+                  // Determine status/score color themes
+                  let theme = 'gray';
+                  if (sub.status === 'approved') theme = 'green';
+                  else if (sub.status === 'rejected') theme = 'red';
+                  else if (sub.ai_score && sub.ai_score > 75) theme = 'blue';
 
                   return (
                     <div
                       key={sub.id}
                       className={`calendar-event ${theme}`}
                       style={{ top: `${top}px`, height: '80px' }}
+                      onClick={() => onSelect?.(sub)}
+                      role={onSelect ? 'button' : undefined}
+                      tabIndex={onSelect ? 0 : undefined}
+                      onKeyDown={(event) => {
+                        if (!onSelect) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onSelect(sub);
+                        }
+                      }}
                     >
                       <div className="calendar-event-content">
                         <div className="calendar-event-title">

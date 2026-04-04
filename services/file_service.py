@@ -101,13 +101,16 @@ class FileService:
 
     def delete(self, file_url: str) -> None:
         try:
-            relative = file_url.removeprefix("/uploads/").lstrip("/")
-            path = (self._storage_root / relative).resolve()
+            path = self.resolve_path(file_url)
             if self._storage_root != path and self._storage_root not in path.parents:
                 raise ValueError("Invalid file path.")
             path.unlink(missing_ok=True)
         except (OSError, ValueError) as exc:
             logger.warning("Local delete failed", extra={"file_url": file_url, "error": str(exc)})
+
+    def resolve_path(self, file_url: str) -> Path:
+        relative = file_url.removeprefix("/uploads/").lstrip("/")
+        return (self._storage_root / relative).resolve()
 
     # ── Validation ────────────────────────────────────────────────────────────
 

@@ -64,10 +64,15 @@ export interface Submission {
   content: string;
   ai_score: number | null;
   ai_scorecard: {
-    score: number;
-    dimensions: ScoreBreakdown;
-    suggestions: AISuggestion[];
-    rewrite: string;
+    score?: number;
+    dimensions?: ScoreBreakdown;
+    suggestions?: AISuggestion[];
+    rewrite?: string;
+    tone_voice?: number;
+    format_structure?: number;
+    stakeholder_fit?: number;
+    missing_elements?: number;
+    improvement_scope?: number;
   } | null;
   ai_suggestions: AISuggestion[] | null;
   ai_rewrite: string | null;
@@ -84,12 +89,18 @@ export interface Submission {
     founder_note: string | null;
     ai_generated_note: string | null;
   };
+  visibility?: {
+    visible_to_roles?: string[] | null;
+    visible_to_departments?: string[] | null;
+    visible_to_user_ids?: string[] | null;
+  } | null;
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 export interface DashboardData {
   pending: Submission[];
+  recent?: Submission[];
   counts: {
     total: number;
     pending: number;

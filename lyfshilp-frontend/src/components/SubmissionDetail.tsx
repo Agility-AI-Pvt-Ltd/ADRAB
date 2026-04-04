@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar } from './shared';
-import { submissionsApi } from '../api';
+import { submissionsApi, usersApi } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import type { Submission } from '../types';
+import type { Submission, TeamDepartment, User } from '../types';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { useTextMeasure } from '../hooks/useTextMeasure';
 
@@ -22,20 +22,35 @@ const DIM_LABELS: Record<string, string> = {
 
 // Collapsible content display — collapse threshold (lines)
 const COLLAPSE_LINES = 7;
+const DEPARTMENT_OPTIONS: { value: TeamDepartment; label: string }[] = [
+  { value: 'sales', label: 'Sales' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'counsellor', label: 'Counsellor' },
+  { value: 'academic', label: 'Academic' },
+  { value: 'founders', label: 'Founders' },
+];
 
 export default function SubmissionDetail({ submission, onClose, onUpdated }: Props) {
   const { user } = useAuth();
   const { toast } = useToast();
   const isFounder = user?.role === 'founder' || user?.role === 'admin';
 
-  const [tab, setTab] = useState<'content' | 'ai' | 'review'>('content');
+  const [tab, setTab] = useState<'content' | 'ai' | 'review' | 'visibility'>('content');
   const [reviewAction, setReviewAction] = useState<'approve' | 'approve_with_edits' | 'reject'>('approve');
   const [founderNote, setFounderNote] = useState('');
   const [editedContent, setEditedContent] = useState(submission.content);
   const [submitting, setSubmitting] = useState(false);
+  const [savingVisibility, setSavingVisibility] = useState(false);
   const [resubmitContent, setResubmitContent] = useState(submission.content);
   const [resubmitting, setResubmitting] = useState(false);
   const [contentExpanded, setContentExpanded] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<User[]>([]);
+  const [visibleDepartments, setVisibleDepartments] = useState<string[]>(
+    submission.visibility?.visible_to_departments ?? []
+  );
+  const [visibleUserIds, setVisibleUserIds] = useState<string[]>(
+    submission.visibility?.visible_to_user_ids ?? []
+  );
 
   // Pretext.js — measure content text at ~620px (modal content width minus padding)
   // Returns lineCount via pure arithmetic after one-time Canvas prepare()
@@ -54,7 +69,46 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
   const resubmitRef      = useAutoResize(resubmitContent, { minHeight: 220, maxHeight: 500 });
 
   const scorecard = submission.ai_scorecard;
-  const dimensions = scorecard?.dimensions;
+  const dimensions = scorecard?.dimensions ?? (
+    scorecard && 'tone_voice' in scorecard
+      ? {
+          tone_voice: scorecard.tone_voice ?? 0,
+          format_structure: scorecard.format_structure ?? 0,
+          stakeholder_fit: scorecard.stakeholder_fit ?? 0,
+          missing_elements: scorecard.missing_elements ?? 0,
+          improvement_scope: scorecard.improvement_scope ?? 0,
+        }
+      : undefined
+  );
+  const scorecardScore = scorecard?.score ?? submission.ai_score ?? 0;
+  const suggestions = scorecard?.suggestions ?? submission.ai_suggestions ?? [];
+  const rewrite = scorecard?.rewrite ?? submission.ai_rewrite ?? '';
+  const downloadableFileUrl = submissionsApi.downloadFileUrl(submission.id);
+  const founderEdited = reviewAction === 'approve_with_edits' && editedContent.trim() !== submission.content.trim();
+  const visibilitySummary = useMemo(() => {
+    const segments: string[] = [];
+    if (visibleDepartments.length) segments.push(`${visibleDepartments.length} department${visibleDepartments.length !== 1 ? 's' : ''}`);
+    if (visibleUserIds.length) segments.push(`${visibleUserIds.length} member${visibleUserIds.length !== 1 ? 's' : ''}`);
+    return segments.length ? segments.join(' + ') : 'No recipients selected yet';
+  }, [visibleDepartments, visibleUserIds]);
+
+  useEffect(() => {
+    if (!isFounder) return;
+    usersApi.list()
+      .then(({ data }) => {
+        setTeamMembers(
+          data.filter(item => item.role === 'team_member' && item.is_active)
+        );
+      })
+      .catch(() => setTeamMembers([]));
+  }, [isFounder]);
+
+  useEffect(() => {
+    setEditedContent(submission.content);
+    setResubmitContent(submission.content);
+    setVisibleDepartments(submission.visibility?.visible_to_departments ?? []);
+    setVisibleUserIds(submission.visibility?.visible_to_user_ids ?? []);
+  }, [submission]);
 
   async function handleReview() {
     setSubmitting(true);
@@ -62,6 +116,8 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
       const { data } = await submissionsApi.review(submission.id, reviewAction, {
         edited_content: reviewAction === 'approve_with_edits' ? editedContent : undefined,
         founder_note: founderNote || undefined,
+        visible_to_departments: reviewAction !== 'reject' ? visibleDepartments : undefined,
+        visible_to_user_ids: reviewAction !== 'reject' ? visibleUserIds : undefined,
       });
       toast('success', `Submission ${reviewAction.replace(/_/g, ' ')}d`);
       onUpdated(data);
@@ -87,8 +143,104 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
     }
   }
 
+  async function handleVisibilitySave() {
+    setSavingVisibility(true);
+    try {
+      const { data } = await submissionsApi.updateVisibility(submission.id, {
+        visible_to_departments: visibleDepartments,
+        visible_to_user_ids: visibleUserIds,
+      });
+      toast('success', 'Visibility updated');
+      onUpdated(data);
+      onClose();
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not update visibility');
+    } finally {
+      setSavingVisibility(false);
+    }
+  }
+
   const canReview = isFounder && (submission.status === 'pending' || submission.status === 'under_review');
   const canResubmit = !isFounder && submission.status === 'rejected';
+  const canManageVisibility = isFounder && submission.status === 'approved';
+
+  function toggleDepartment(department: string) {
+    setVisibleDepartments(current =>
+      current.includes(department)
+        ? current.filter(item => item !== department)
+        : [...current, department]
+    );
+  }
+
+  const renderDepartmentSelector = () => (
+    <div className="form-group" style={{ marginTop: 24 }}>
+      <label className="form-label" style={{ marginBottom: 12 }}>Visible to Departments</label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {DEPARTMENT_OPTIONS.map(option => {
+          const active = visibleDepartments.includes(option.value);
+          return (
+            <label
+              key={option.value}
+              className={`dept-pill ${active ? 'active' : ''}`}
+            >
+              <input
+                type="checkbox"
+                className="sr-only"
+                style={{ display: 'none' }}
+                checked={active}
+                onChange={() => toggleDepartment(option.value)}
+              />
+              {active && <span style={{ fontSize: 11 }}>✓</span>}
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderMemberSelector = () => (
+    <div className="form-group" style={{ marginTop: 24 }}>
+      <label className="form-label" style={{ marginBottom: 12 }}>Visible to Specific Team Members</label>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+        gap: 12,
+        maxHeight: 250,
+        overflowY: 'auto',
+        padding: 4,
+        margin: '-4px'
+      }}>
+        {teamMembers.map(member => {
+          const active = visibleUserIds.includes(member.id);
+          return (
+            <div
+              key={member.id}
+              className={`member-card ${active ? 'active' : ''}`}
+              onClick={() => {
+                setVisibleUserIds(prev =>
+                  prev.includes(member.id) ? prev.filter(id => id !== member.id) : [...prev, member.id]
+                );
+              }}
+            >
+              <Avatar name={member.name} email={member.email ?? ''} size="sm" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {member.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
+                  {member.department?.replace('_', ' ') ?? 'General'}
+                </div>
+              </div>
+              <div className="member-card-check">
+                {active && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <Modal
@@ -158,6 +310,11 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
         {(canReview || canResubmit) && (
           <button className={`tab-btn ${tab === 'review' ? 'active' : ''}`} onClick={() => setTab('review')}>
             {canReview ? 'Review' : 'Resubmit'}
+          </button>
+        )}
+        {canManageVisibility && (
+          <button className={`tab-btn ${tab === 'visibility' ? 'active' : ''}`} onClick={() => setTab('visibility')}>
+            Visibility
           </button>
         )}
       </div>
@@ -238,7 +395,7 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
             <div style={{ marginTop: 16 }}>
               <div className="detail-section-title">Attached File</div>
               <a
-                href={submission.file_url}
+                href={downloadableFileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-outline btn-sm"
@@ -258,7 +415,7 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '16px 20px', background: 'var(--green-50)', border: '1px solid var(--green-100)', borderRadius: 12 }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 42, fontFamily: 'Playfair Display, serif', fontWeight: 700, color: 'var(--green-900)', lineHeight: 1 }}>
-                {scorecard.score}
+                {scorecardScore}
               </div>
               <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>out of 100</div>
             </div>
@@ -276,10 +433,10 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           </div>
 
           {/* Suggestions */}
-          {scorecard.suggestions?.length > 0 && (
+          {suggestions.length > 0 && (
             <div style={{ marginBottom: 24 }}>
               <div className="detail-section-title">Suggested Improvements</div>
-              {scorecard.suggestions.map((s, i) => (
+              {suggestions.map((s, i) => (
                 <div key={i} className="suggestion-item">
                   <div className="suggestion-original">{s.original}</div>
                   <div className="suggestion-replacement">→ {s.replacement}</div>
@@ -290,10 +447,10 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           )}
 
           {/* AI Rewrite */}
-          {scorecard.rewrite && (
+          {rewrite && (
             <div>
               <div className="detail-section-title">AI Suggested Rewrite</div>
-              <div className="rewrite-box">{scorecard.rewrite}</div>
+              <div className="rewrite-box">{rewrite}</div>
             </div>
           )}
         </div>
@@ -318,6 +475,13 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
             </div>
           </div>
 
+          <div style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 13 }}>
+            <div><strong>Founder changes:</strong> {reviewAction === 'approve_with_edits' ? (founderEdited ? 'Founder edited the final version' : 'Approve with edits selected, but no content change made yet') : 'Approve as-is or reject without content edits'}</div>
+            {reviewAction !== 'reject' && (
+              <div style={{ marginTop: 6 }}><strong>Final visibility:</strong> {visibilitySummary}</div>
+            )}
+          </div>
+
           {reviewAction === 'approve_with_edits' && (
             <div className="form-group">
               <label className="form-label">Edited Content</label>
@@ -330,6 +494,13 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
                 style={{ minHeight: 200, resize: 'none', transition: 'height 0.15s ease' }}
               />
             </div>
+          )}
+
+          {reviewAction !== 'reject' && (
+            <>
+              {renderDepartmentSelector()}
+              {renderMemberSelector()}
+            </>
           )}
 
           <div className="form-group">
@@ -378,6 +549,28 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
             disabled={resubmitting}
           >
             {resubmitting ? <Spinner /> : 'Resubmit for Review'}
+          </button>
+        </div>
+      )}
+
+      {tab === 'visibility' && canManageVisibility && (
+        <div>
+          <div className="info-banner" style={{ marginBottom: 20 }}>
+            <div className="info-row"><strong>Approval state:</strong> This submission is already approved.</div>
+            <div className="info-row"><strong>Founder changes:</strong> {submission.reviewed_at ? 'You can update who can view or download the final version at any time.' : 'No review metadata available.'}</div>
+            <div className="info-row"><strong>Current visibility:</strong> {visibilitySummary}</div>
+          </div>
+
+          {renderDepartmentSelector()}
+          {renderMemberSelector()}
+
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', padding: '11px' }}
+            onClick={handleVisibilitySave}
+            disabled={savingVisibility}
+          >
+            {savingVisibility ? <Spinner /> : 'Save visibility'}
           </button>
         </div>
       )}

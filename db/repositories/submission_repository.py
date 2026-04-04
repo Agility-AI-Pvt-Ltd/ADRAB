@@ -47,7 +47,11 @@ class SubmissionRepository(BaseRepository[Submission]):
         stmt = (
             select(Submission)
             .where(and_(*filters))
-            .options(selectinload(Submission.author))
+            .options(
+                selectinload(Submission.author),
+                selectinload(Submission.visibility),
+                selectinload(Submission.feedback),
+            )
             .order_by(desc(Submission.created_at))
         )
         result = await self._session.execute(stmt)
@@ -57,7 +61,23 @@ class SubmissionRepository(BaseRepository[Submission]):
         stmt = (
             select(Submission)
             .where(Submission.user_id == user_id)
+            .options(
+                selectinload(Submission.author),
+                selectinload(Submission.feedback),
+                selectinload(Submission.visibility),
+            )
             .order_by(desc(Submission.created_at))
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_recent_activity_for_founders(self) -> List[Submission]:
+        stmt = (
+            select(Submission)
+            .where(Submission.status.in_([SubmissionStatus.APPROVED, SubmissionStatus.REJECTED]))
+            .options(selectinload(Submission.author))
+            .order_by(desc(Submission.created_at))
+            .limit(100)
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
@@ -70,6 +90,11 @@ class SubmissionRepository(BaseRepository[Submission]):
                 (Submission.id == root_id)
                 | (Submission.parent_submission_id == root_id)
             )
+            .options(
+                selectinload(Submission.author),
+                selectinload(Submission.feedback),
+                selectinload(Submission.visibility),
+            )
             .order_by(desc(Submission.version))
         )
         result = await self._session.execute(stmt)
@@ -80,4 +105,14 @@ class SubmissionRepository(BaseRepository[Submission]):
 
         stmt = select(Submission.status, func.count()).group_by(Submission.status)
         result = await self._session.execute(stmt)
-        return {row[0].value: row[1] for row in result.all()}
+        raw_counts = {row[0].value: row[1] for row in result.all()}
+        counts = {
+            SubmissionStatus.DRAFT.value: 0,
+            SubmissionStatus.PENDING.value: 0,
+            SubmissionStatus.UNDER_REVIEW.value: 0,
+            SubmissionStatus.APPROVED.value: 0,
+            SubmissionStatus.REJECTED.value: 0,
+        }
+        counts.update(raw_counts)
+        counts["total"] = sum(counts.values())
+        return counts

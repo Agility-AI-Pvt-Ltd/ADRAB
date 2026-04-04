@@ -74,6 +74,9 @@ async def test_submit_for_review(client: AsyncClient, team_member):
     data = resp.json()
     assert data["status"] == "pending"
     assert data["ai_score"] == 78
+    assert data["ai_scorecard"]["score"] == 78
+    assert len(data["ai_scorecard"]["suggestions"]) == 1
+    assert data["ai_scorecard"]["rewrite"] == "[AI rewritten document]"
     assert data["workflow_stage"] == "submitted_to_founder"
     assert data["workflow_memory"]["score"] == 78
 
@@ -126,6 +129,41 @@ async def test_founder_can_approve(client: AsyncClient, team_member, founder_use
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_founder_can_update_visibility_after_approval(client: AsyncClient, team_member, founder_user):
+    create_resp = await client.post(
+        "/api/v1/submissions/",
+        json=SUBMISSION_PAYLOAD,
+        headers=auth_headers(team_member),
+    )
+    sub_id = create_resp.json()["id"]
+
+    with patch(
+        "services.ai_service.AIService.review_document",
+        new_callable=AsyncMock,
+        return_value=MOCK_SCORECARD,
+    ):
+        await client.post(
+            f"/api/v1/submissions/{sub_id}/submit",
+            headers=auth_headers(team_member),
+        )
+
+    approve_resp = await client.post(
+        f"/api/v1/submissions/{sub_id}/review",
+        json={"action": "approve"},
+        headers=auth_headers(founder_user),
+    )
+    assert approve_resp.status_code == 200
+
+    update_resp = await client.patch(
+        f"/api/v1/submissions/{sub_id}/visibility",
+        json={"visible_to_departments": ["marketing"]},
+        headers=auth_headers(founder_user),
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["visibility"]["visible_to_departments"] == ["marketing"]
 
 
 @pytest.mark.asyncio

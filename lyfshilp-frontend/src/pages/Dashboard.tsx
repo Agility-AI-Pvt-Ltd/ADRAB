@@ -39,7 +39,13 @@ export default function Dashboard() {
   useEffect(() => { load(); }, [docFilter, shFilter]);
 
   const pending = data?.pending ?? [];
-  const counts = data?.counts ?? { total: 0, pending: 0, approved: 0, rejected: 0, under_review: 0 };
+  const counts = {
+    total: data?.counts?.total ?? 0,
+    pending: data?.counts?.pending ?? 0,
+    approved: data?.counts?.approved ?? 0,
+    rejected: data?.counts?.rejected ?? 0,
+    under_review: data?.counts?.under_review ?? 0,
+  };
   const pendingApprovals = users.filter(u => u.role === 'team_member' && !u.is_active);
 
   const filtered = pending.filter(s =>
@@ -56,6 +62,15 @@ export default function Dashboard() {
       toast('error', e.response?.data?.detail ?? 'Could not approve team member');
     } finally {
       setApprovingUserId(null);
+    }
+  }
+
+  async function openSubmission(submissionId: string) {
+    try {
+      const { data: submission } = await submissionsApi.get(submissionId);
+      setSelected(submission);
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not open submission');
     }
   }
 
@@ -224,7 +239,7 @@ export default function Dashboard() {
                   <td>
                     <button
                       className="btn btn-outline btn-sm"
-                      onClick={() => setSelected(s)}
+                      onClick={() => openSubmission(s.id)}
                     >
                       Review →
                     </button>
@@ -236,7 +251,10 @@ export default function Dashboard() {
         )}
       </div>
 
-      <CalendarTimeline submissions={data?.pending ?? []} />
+      <CalendarTimeline
+        submissions={[...(data?.pending ?? []), ...(data?.recent ?? [])]}
+        onSelect={(submission) => openSubmission(submission.id)}
+      />
 
       {selected && (
         <SubmissionDetail

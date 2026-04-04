@@ -215,10 +215,15 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow-x: auto;
+  scrollbar-width: none; /* Hide scrollbar for cleaner UI */
+  min-width: 0; /* CRITICAL: Allows flex child to shrink below its content size */
+}
+.calendar-days-container::-webkit-scrollbar {
+  display: none;
 }
 .calendar-days-header {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
   margin-bottom: 16px;
 }
 .calendar-day-head {
@@ -248,14 +253,12 @@
 .calendar-tracks {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
 }
 
 .calendar-bg-lines {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
   pointer-events: none;
 }
 .calendar-bg-line {
@@ -316,6 +319,24 @@
   color: #0A3D28;
 }
 
+.calendar-event.green {
+  background: #DCFCE7;
+}
+[data-theme="dark"] .calendar-event.green {
+  background: #022C22;
+  color: #6EE7B7;
+  border: 1px solid #064E3B;
+}
+
+.calendar-event.red {
+  background: #FEE2E2;
+}
+[data-theme="dark"] .calendar-event.red {
+  background: #450A0A;
+  color: #FCA5A5;
+  border: 1px solid #7F1D1D;
+}
+
 .calendar-event-content {
   flex: 1;
   min-width: 0;
@@ -331,6 +352,8 @@
 }
 [data-theme="dark"] .calendar-event.gray .calendar-event-title { color: #f0f0f0; }
 [data-theme="dark"] .calendar-event.blue .calendar-event-title { color: #0A3D28; }
+[data-theme="dark"] .calendar-event.green .calendar-event-title { color: #6EE7B7; }
+[data-theme="dark"] .calendar-event.red .calendar-event-title { color: #FCA5A5; }
 
 .calendar-event-desc {
   font-size: 12px;
@@ -341,6 +364,8 @@
 }
 [data-theme="dark"] .calendar-event.gray .calendar-event-desc { color: #9A9A9A; }
 [data-theme="dark"] .calendar-event.blue .calendar-event-desc { color: #2B7351; }
+[data-theme="dark"] .calendar-event.green .calendar-event-desc { color: #059669; }
+[data-theme="dark"] .calendar-event.red .calendar-event-desc { color: #DC2626; }
 
 .calendar-event-avatars {
   flex-shrink: 0;
@@ -352,6 +377,8 @@
 }
 [data-theme="dark"] .calendar-event.gray .avatar { border-color: #282828; }
 [data-theme="dark"] .calendar-event.blue .avatar { border-color: #D8FAED; }
+[data-theme="dark"] .calendar-event.green .avatar { border-color: #022C22; }
+[data-theme="dark"] .calendar-event.red .avatar { border-color: #450A0A; }
 
 html, body, #root { height: 100%; }
 
@@ -563,7 +590,7 @@ body {
 }
 
 /* ── MAIN ── */
-.main { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+.main { margin-left: 250px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
 
 .topbar {
   background: transparent;
@@ -603,6 +630,76 @@ body {
   text-decoration: none;
   white-space: nowrap;
 }
+
+/* ── VISIBILITY UI ── */
+.dept-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.dept-pill:hover { border-color: var(--green-900); }
+.dept-pill.active {
+  background: var(--green-900);
+  color: var(--white);
+  border-color: var(--green-900);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.member-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.member-card:hover { border-color: var(--green-900); }
+.member-card.active {
+  background: var(--green-50);
+  border-color: var(--green-900);
+}
+.member-card-check {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.member-card.active .member-card-check {
+  background: var(--green-900);
+  border-color: var(--green-900);
+}
+.member-card.active .member-card-check span {
+  color: var(--white) !important;
+}
+[data-theme="dark"] .member-card.active .user-name { color: var(--green-900); }
+
+.info-banner {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--green-900);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+.info-banner strong { color: var(--ink); font-weight: 600; display: block; margin-bottom: 2px; }
+.info-banner .info-row { margin-bottom: 8px; }
+.info-banner .info-row:last-child { margin-bottom: 0; }
+
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-primary { background: var(--green-900); color: white; }

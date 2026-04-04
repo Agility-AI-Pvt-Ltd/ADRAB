@@ -92,8 +92,19 @@ export const submissionsApi = {
     edited_content?: string;
     founder_note?: string;
     visible_to_roles?: string[];
+    visible_to_departments?: string[];
+    visible_to_user_ids?: string[];
   }) =>
     client.post<Submission>(`/submissions/${id}/review`, { action, ...opts }),
+
+  updateVisibility: (id: string, opts: {
+    visible_to_roles?: string[];
+    visible_to_departments?: string[];
+    visible_to_user_ids?: string[];
+  }) =>
+    client.patch<Submission>(`/submissions/${id}/visibility`, opts),
+
+  downloadFileUrl: (id: string) => `${BASE}/submissions/${id}/download-file`,
 
   dashboard: (filters?: { doc_type?: string; stakeholder?: string; user_id?: string }) =>
     client.get<DashboardData>('/submissions/dashboard', { params: filters }),

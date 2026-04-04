@@ -5,9 +5,12 @@ Orchestrates the full document lifecycle:
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
 
+from fastapi.responses import FileResponse
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import ForbiddenError, NotFoundError, ValidationError
@@ -33,7 +36,9 @@ from schemas.submission import (
     RefineDraftRequest,
     ReviewAction,
     SubmissionCreate,
+    VisibilityUpdateRequest,
 )
+from services.file_service import FileService
 from services.submission_workflow_memory_service import SubmissionWorkflowMemoryService
 
 logger = get_logger(__name__)
@@ -48,6 +53,7 @@ class SubmissionService:
         self._prompt_context_service = SubmissionPromptContextService(session)
         self._workflow_service = SubmissionWorkflowService(self._prompt_context_service)
         self._workflow_memory_service = SubmissionWorkflowMemoryService(session)
+        self._file_service = FileService()
 
     # ── Draft generation ──────────────────────────────────────────────────────
 
@@ -114,7 +120,8 @@ class SubmissionService:
         )
         submission = await self._submission_repo.create(submission)
         await self._log(actor, "submission.create", "submission", str(submission.id))
-        return submission
+        refreshed = await self._submission_repo.get_with_relations(submission.id)
+        return refreshed or submission
 
     async def submit_for_review(self, submission_id: UUID, actor: User) -> Submission:
         """Run AI pre-check then mark submission as PENDING."""
@@ -136,7 +143,7 @@ class SubmissionService:
         await self._submission_repo.update(
             submission,
             ai_score=scorecard.score,
-            ai_scorecard=scorecard.dimensions.model_dump(),
+            ai_scorecard=scorecard.model_dump(),
             ai_suggestions=[s.model_dump() for s in scorecard.suggestions],
             ai_rewrite=scorecard.rewrite,
             status=SubmissionStatus.PENDING,
@@ -150,7 +157,8 @@ class SubmissionService:
         )
 
         await self._log(actor, "submission.submit", "submission", str(submission_id))
-        return submission
+        refreshed = await self._submission_repo.get_with_relations(submission.id)
+        return refreshed or submission
 
     # ── Founder review actions ────────────────────────────────────────────────
 
@@ -183,7 +191,8 @@ class SubmissionService:
             raise ValidationError(f"Unknown review action: '{action}'.")
 
         await self._log(founder, f"submission.{action}", "submission", str(submission_id))
-        return submission
+        refreshed = await self._submission_repo.get_with_relations(submission.id)
+        return refreshed or submission
 
     async def _approve(self, submission: Submission, data: ReviewAction, founder: User) -> None:
         await self._submission_repo.update(
@@ -244,14 +253,26 @@ class SubmissionService:
         )
         self._session.add(feedback)
 
-    async def _set_visibility(self, submission: Submission, data: ReviewAction) -> None:
-        if data.visible_to_roles or data.visible_to_user_ids:
-            vis = Visibility(
-                submission_id=submission.id,
-                visible_to_roles=data.visible_to_roles,
-                visible_to_user_ids=[str(uid) for uid in (data.visible_to_user_ids or [])],
-            )
-            self._session.add(vis)
+    async def _set_visibility(self, submission: Submission, data: ReviewAction | VisibilityUpdateRequest) -> None:
+        await self._ensure_visibility_schema()
+        roles = data.visible_to_roles or []
+        departments = data.visible_to_departments or []
+        user_ids = [str(uid) for uid in (data.visible_to_user_ids or [])]
+
+        if submission.visibility is not None:
+            submission.visibility.visible_to_roles = roles
+            submission.visibility.visible_to_departments = departments
+            submission.visibility.visible_to_user_ids = user_ids
+            self._session.add(submission.visibility)
+            return
+
+        vis = Visibility(
+            submission_id=submission.id,
+            visible_to_roles=roles,
+            visible_to_departments=departments,
+            visible_to_user_ids=user_ids,
+        )
+        self._session.add(vis)
 
     # ── Resubmission (versioning) ─────────────────────────────────────────────
 
@@ -287,7 +308,8 @@ class SubmissionService:
         )
         new_version = await self._submission_repo.create(new_version)
         await self._log(actor, "submission.resubmit", "submission", str(new_version.id))
-        return new_version
+        refreshed = await self._submission_repo.get_with_relations(new_version.id)
+        return refreshed or new_version
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -303,8 +325,9 @@ class SubmissionService:
         pending = await self._submission_repo.get_pending_for_founders(
             doc_type=doc_type, stakeholder=stakeholder, user_id=user_id
         )
+        recent = await self._submission_repo.get_recent_activity_for_founders()
         counts = await self._submission_repo.count_by_status()
-        return {"counts": counts, "pending": pending}
+        return {"counts": counts, "pending": pending, "recent": recent}
 
     async def get_my_submissions(self, actor: User) -> List[Submission]:
         await self._workflow_memory_service.ensure_schema()
@@ -312,18 +335,54 @@ class SubmissionService:
 
     async def get_submission_detail(self, submission_id: UUID, actor: User) -> Submission:
         await self._workflow_memory_service.ensure_schema()
+        await self._ensure_visibility_schema()
         submission = await self._submission_repo.get_with_relations(submission_id)
         if submission is None:
             raise NotFoundError()
-        # Founders see all; team members see only their own
-        if actor.role == UserRole.TEAM_MEMBER and submission.user_id != actor.id:
+        if actor.role in (UserRole.FOUNDER, UserRole.ADMIN):
+            return submission
+        if submission.user_id == actor.id:
+            return submission
+        if not self._can_access_shared_submission(submission, actor):
             raise ForbiddenError()
         return submission
+
+    async def update_visibility(
+        self,
+        submission_id: UUID,
+        data: VisibilityUpdateRequest,
+        founder: User,
+    ) -> Submission:
+        await self._workflow_memory_service.ensure_schema()
+        await self._ensure_visibility_schema()
+        self._require_founder(founder)
+        submission = await self._submission_repo.get_with_relations(submission_id)
+        if submission is None:
+            raise NotFoundError(f"Submission '{submission_id}' not found.")
+        if submission.status != SubmissionStatus.APPROVED:
+            raise ValidationError("Visibility can only be updated after approval.")
+
+        await self._set_visibility(submission, data)
+        await self._log(founder, "submission.visibility_update", "submission", str(submission_id))
+        refreshed = await self._submission_repo.get_with_relations(submission.id)
+        return refreshed or submission
 
     async def get_version_history(self, submission_id: UUID, actor: User) -> List[Submission]:
         await self._workflow_memory_service.ensure_schema()
         self._require_founder(actor)
         return await self._submission_repo.get_version_history(submission_id)
+
+    async def download_submission_file(self, submission_id: UUID, actor: User) -> FileResponse:
+        submission = await self.get_submission_detail(submission_id, actor)
+        if not submission.file_url:
+            raise NotFoundError("No file attached to this submission.")
+        file_path = self._file_service.resolve_path(submission.file_url)
+        if not file_path.exists() or not file_path.is_file():
+            raise NotFoundError("Attached file not found.")
+        return FileResponse(
+            path=Path(file_path),
+            filename=submission.file_name or file_path.name,
+        )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -352,3 +411,28 @@ class SubmissionService:
     def _require_founder(user: User) -> None:
         if user.role not in (UserRole.FOUNDER, UserRole.ADMIN):
             raise ForbiddenError("Only Founders can perform this action.")
+
+    @staticmethod
+    def _can_access_shared_submission(submission: Submission, actor: User) -> bool:
+        if submission.status != SubmissionStatus.APPROVED:
+            return False
+        if submission.visibility is None:
+            return False
+
+        if str(actor.id) in set(submission.visibility.visible_to_user_ids or []):
+            return True
+        if actor.role.value in set(submission.visibility.visible_to_roles or []):
+            return True
+        if actor.department and actor.department.value in set(submission.visibility.visible_to_departments or []):
+            return True
+        return False
+
+    async def _ensure_visibility_schema(self) -> None:
+        await self._session.execute(
+            text(
+                """
+                ALTER TABLE visibility
+                ADD COLUMN IF NOT EXISTS visible_to_departments VARCHAR(255)[]
+                """
+            )
+        )

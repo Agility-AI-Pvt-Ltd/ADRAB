@@ -82,6 +82,14 @@ class DraftAnalysisResponse(BaseModel):
     workflow_memory: Dict[str, Any]
 
 
+class VisibilityResponse(BaseModel):
+    visible_to_roles: Optional[List[str]] = None
+    visible_to_departments: Optional[List[str]] = None
+    visible_to_user_ids: Optional[List[str]] = None
+
+    model_config = {"from_attributes": True}
+
+
 class SubmissionResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -102,6 +110,7 @@ class SubmissionResponse(BaseModel):
     submitted_at: Optional[datetime]
     reviewed_at: Optional[datetime]
     created_at: datetime
+    visibility: Optional[VisibilityResponse] = None
 
     model_config = {"from_attributes": True}
 
@@ -124,4 +133,11 @@ class ReviewAction(BaseModel):
     edited_content: Optional[str] = None
     founder_note: Optional[str] = None
     visible_to_roles: Optional[List[str]] = None
+    visible_to_departments: Optional[List[str]] = None
+    visible_to_user_ids: Optional[List[uuid.UUID]] = None
+
+
+class VisibilityUpdateRequest(BaseModel):
+    visible_to_roles: Optional[List[str]] = None
+    visible_to_departments: Optional[List[str]] = None
     visible_to_user_ids: Optional[List[uuid.UUID]] = None
