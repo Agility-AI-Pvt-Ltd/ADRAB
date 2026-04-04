@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar } from './shared';
+import { Modal, StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar, AvatarGroup } from './shared';
 import { submissionsApi, usersApi } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Submission, TeamDepartment, User } from '../types';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { useTextMeasure } from '../hooks/useTextMeasure';
+import { downloadTextAsPdf } from '../utils/documentExport';
 
 interface Props {
   submission: Submission;
   onClose: () => void;
   onUpdated: (s: Submission) => void;
 }
+
+const StartIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+    <polyline points="7 15 11 11 14 14 18 10"></polyline>
+  </svg>
+);
 
 const DIM_LABELS: Record<string, string> = {
   tone_voice: 'Tone & Voice',
@@ -35,7 +43,10 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
   const { toast } = useToast();
   const isFounder = user?.role === 'founder' || user?.role === 'admin';
 
-  const [tab, setTab] = useState<'content' | 'ai' | 'review' | 'visibility'>('content');
+  const [tab, setTab] = useState<'content' | 'ai' | 'review' | 'visibility' | 'history'>('content');
+  const [history, setHistory] = useState<Submission[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [reviewAction, setReviewAction] = useState<'approve' | 'approve_with_edits' | 'reject'>('approve');
   const [founderNote, setFounderNote] = useState('');
   const [editedContent, setEditedContent] = useState(submission.content);
@@ -85,12 +96,26 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
   const rewrite = scorecard?.rewrite ?? submission.ai_rewrite ?? '';
   const downloadableFileUrl = submissionsApi.downloadFileUrl(submission.id);
   const founderEdited = reviewAction === 'approve_with_edits' && editedContent.trim() !== submission.content.trim();
-  const visibilitySummary = useMemo(() => {
+  const visibilitySummaryText = useMemo(() => {
     const segments: string[] = [];
     if (visibleDepartments.length) segments.push(`${visibleDepartments.length} department${visibleDepartments.length !== 1 ? 's' : ''}`);
     if (visibleUserIds.length) segments.push(`${visibleUserIds.length} member${visibleUserIds.length !== 1 ? 's' : ''}`);
     return segments.length ? segments.join(' + ') : 'No recipients selected yet';
   }, [visibleDepartments, visibleUserIds]);
+
+  const renderVisibilitySummary = () => {
+    if (visibleUserIds.length === 0 && visibleDepartments.length === 0) {
+      return <span>No recipients selected yet</span>;
+    }
+    
+    const users = teamMembers.filter(m => visibleUserIds.includes(m.id));
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, verticalAlign: 'middle', marginLeft: 4 }}>
+        {users.length > 0 && <AvatarGroup users={users} max={4} size="sm" />}
+        <span>{visibilitySummaryText}</span>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (!isFounder) return;
@@ -109,6 +134,85 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
     setVisibleDepartments(submission.visibility?.visible_to_departments ?? []);
     setVisibleUserIds(submission.visibility?.visible_to_user_ids ?? []);
   }, [submission]);
+
+  useEffect(() => {
+    if (tab === 'history' && history.length === 0) {
+      setLoadingHistory(true);
+      submissionsApi.versions(submission.id)
+        .then(res => setHistory(res.data))
+        .catch(() => toast('error', 'Could not load history'))
+        .finally(() => setLoadingHistory(false));
+    }
+  }, [tab, submission.id, history.length]);
+
+  const timelineEvents = useMemo(() => {
+    const events: Array<{ id: string; type: 'start' | 'mid' | 'end'; title: string; desc: React.ReactNode; date: string; icon?: React.ReactNode; content?: string }> = [];
+    if (history.length === 0) return events;
+
+    const sorted = [...history].sort((a, b) => a.version - b.version);
+
+    sorted.forEach((sub, idx) => {
+      if (idx === 0) {
+        events.push({
+          id: `start`,
+          type: 'start',
+          title: `Draft Initiated`,
+          desc: `Version 1 created by ${sub.author?.name || 'author'}`,
+          date: sub.created_at,
+          icon: <StartIcon />,
+          content: sub.content
+        });
+      } else {
+        events.push({
+          id: `draft-${sub.version}`,
+          type: 'mid',
+          title: `Version ${sub.version} Created`,
+          desc: `Draft initiated for requested revisions.`,
+          date: sub.created_at,
+          content: sub.content
+        });
+      }
+
+      if (sub.submitted_at) {
+        events.push({
+          id: `submit-${sub.version}`,
+          type: 'mid',
+          title: idx === 0 ? `Sent for Review` : `Revised Version Submitted`,
+          desc: `Version ${sub.version} sent to founder.`,
+          date: sub.submitted_at,
+          content: sub.content
+        });
+      }
+
+      if (sub.reviewed_at) {
+        if (sub.status === 'rejected') {
+          events.push({
+            id: `review-${sub.version}`,
+            type: 'mid',
+            title: `Changes Requested`,
+            desc: sub.feedback?.founder_note ? `"${sub.feedback.founder_note}"` : 'Revisions requested.',
+            date: sub.reviewed_at,
+            content: sub.content
+          });
+        } else if (sub.status === 'approved') {
+          events.push({
+            id: `approve-${sub.version}`,
+            type: 'mid',
+            title: `Approved`,
+            desc: `Document finalized and ready for use.`,
+            date: sub.reviewed_at,
+            content: sub.content
+          });
+        }
+      }
+    });
+
+    if (events.length > 1) {
+      events[events.length - 1].type = 'end';
+    }
+
+    return events;
+  }, [history]);
 
   async function handleReview() {
     setSubmitting(true);
@@ -160,9 +264,67 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
     }
   }
 
+  function handleApplySuggestion(original: string, replacement: string) {
+    const sourceContent = reviewAction === 'approve_with_edits' ? editedContent : submission.content;
+    if (!original.trim()) {
+      toast('error', 'This suggestion cannot be applied automatically');
+      return;
+    }
+
+    const nextContent = sourceContent.includes(original)
+      ? sourceContent.replace(original, replacement)
+      : editedContent.includes(original)
+        ? editedContent.replace(original, replacement)
+        : null;
+
+    if (!nextContent) {
+      toast('error', 'Could not find that exact text in the document');
+      return;
+    }
+
+    setReviewAction('approve_with_edits');
+    setTab('review');
+    setEditedContent(nextContent);
+    toast('success', 'AI suggestion applied to founder edits');
+  }
+
+  function handleApplyRewrite() {
+    if (!rewrite.trim()) {
+      toast('error', 'No AI rewrite is available');
+      return;
+    }
+    setReviewAction('approve_with_edits');
+    setTab('review');
+    setEditedContent(rewrite);
+    toast('success', 'AI rewrite applied to founder edits');
+  }
+
+  async function handleCopyApprovedContent() {
+    try {
+      await navigator.clipboard.writeText(submission.content);
+      toast('success', 'Approved document copied to clipboard');
+    } catch {
+      toast('error', 'Could not copy document to clipboard');
+    }
+  }
+
+  function handleDownloadApprovedPdf() {
+    try {
+      const safeDocType = submission.doc_type.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'document';
+      const safeStakeholder = submission.stakeholder.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+      const filename = `${safeDocType}-${safeStakeholder}-v${submission.version}.pdf`;
+      const title = `${submission.doc_type.replace(/_/g, ' ')} · ${submission.stakeholder}`;
+      downloadTextAsPdf(filename, title, submission.content);
+      toast('success', 'PDF download started');
+    } catch {
+      toast('error', 'Could not generate PDF');
+    }
+  }
+
   const canReview = isFounder && (submission.status === 'pending' || submission.status === 'under_review');
   const canResubmit = !isFounder && submission.status === 'rejected';
   const canManageVisibility = isFounder && submission.status === 'approved';
+  const canExportApprovedDocument = isFounder && submission.status === 'approved';
 
   function toggleDepartment(department: string) {
     setVisibleDepartments(current =>
@@ -247,7 +409,7 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
       title="Submission Detail"
       subtitle={`Version ${submission.version} · ${submission.doc_type.replace(/_/g, ' ')}`}
       onClose={onClose}
-      size="lg"
+      size="full"
     >
       {/* Header meta strip */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -297,6 +459,31 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
         )}
       </div>
 
+      {canExportApprovedDocument && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            flexWrap: 'wrap',
+            marginBottom: 20,
+            padding: '12px 14px',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+          }}
+        >
+          <button className="btn btn-primary btn-sm" onClick={handleDownloadApprovedPdf}>
+            Download PDF
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={handleCopyApprovedContent}>
+            Copy to clipboard
+          </button>
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', alignSelf: 'center' }}>
+            Exports the final approved content currently shown in this submission.
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="tabs">
         <button className={`tab-btn ${tab === 'content' ? 'active' : ''}`} onClick={() => setTab('content')}>
@@ -317,6 +504,9 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
             Visibility
           </button>
         )}
+        <button className={`tab-btn ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>
+          History
+        </button>
       </div>
 
       {/* Content tab — Pretext-measured collapsible display */}
@@ -352,14 +542,14 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           <div
             className="content-display"
             style={{
-              maxHeight: contentIsLong && !contentExpanded ? `${collapsedHeight}px` : undefined,
+              maxHeight: contentIsLong && !contentExpanded ? `${collapsedHeight}px` : 'none',
               overflow: contentIsLong && !contentExpanded ? 'hidden' : 'visible',
               maskImage: contentIsLong && !contentExpanded
                 ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
-                : undefined,
+                : 'none',
               WebkitMaskImage: contentIsLong && !contentExpanded
                 ? 'linear-gradient(to bottom, black 60%, transparent 100%)'
-                : undefined,
+                : 'none',
               transition: 'max-height 0.25s ease',
             }}
           >
@@ -441,6 +631,16 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
                   <div className="suggestion-original">{s.original}</div>
                   <div className="suggestion-replacement">→ {s.replacement}</div>
                   <div className="suggestion-reason">{s.reason}</div>
+                  {canReview && (
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleApplySuggestion(s.original, s.replacement)}
+                      >
+                        Apply suggestion
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -449,7 +649,14 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           {/* AI Rewrite */}
           {rewrite && (
             <div>
-              <div className="detail-section-title">AI Suggested Rewrite</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <div className="detail-section-title" style={{ marginBottom: 0 }}>AI Suggested Rewrite</div>
+                {canReview && (
+                  <button className="btn btn-primary btn-sm" onClick={handleApplyRewrite}>
+                    Use full rewrite
+                  </button>
+                )}
+              </div>
               <div className="rewrite-box">{rewrite}</div>
             </div>
           )}
@@ -478,7 +685,7 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           <div style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 13 }}>
             <div><strong>Founder changes:</strong> {reviewAction === 'approve_with_edits' ? (founderEdited ? 'Founder edited the final version' : 'Approve with edits selected, but no content change made yet') : 'Approve as-is or reject without content edits'}</div>
             {reviewAction !== 'reject' && (
-              <div style={{ marginTop: 6 }}><strong>Final visibility:</strong> {visibilitySummary}</div>
+              <div style={{ marginTop: 6 }}><strong>Final visibility:</strong> {renderVisibilitySummary()}</div>
             )}
           </div>
 
@@ -558,7 +765,7 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           <div className="info-banner" style={{ marginBottom: 20 }}>
             <div className="info-row"><strong>Approval state:</strong> This submission is already approved.</div>
             <div className="info-row"><strong>Founder changes:</strong> {submission.reviewed_at ? 'You can update who can view or download the final version at any time.' : 'No review metadata available.'}</div>
-            <div className="info-row"><strong>Current visibility:</strong> {visibilitySummary}</div>
+            <div className="info-row" style={{ display: 'flex', alignItems: 'center' }}><strong>Current visibility:</strong> {renderVisibilitySummary()}</div>
           </div>
 
           {renderDepartmentSelector()}
@@ -572,6 +779,46 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           >
             {savingVisibility ? <Spinner /> : 'Save visibility'}
           </button>
+        </div>
+      )}
+
+      {/* History tab */}
+      {tab === 'history' && (
+        <div style={{ minHeight: 200, padding: '10px 0' }}>
+          {loadingHistory ? (
+            <div style={{ textAlign: 'center', marginTop: 40 }}><Spinner dark /></div>
+          ) : timelineEvents.length === 0 ? (
+            <div className="empty-state">No history available</div>
+          ) : (
+            <div className="timeline">
+              <div className="timeline-line" />
+              {timelineEvents.map((ev, i) => (
+                <div key={ev.id} className={`timeline-item ${ev.type}`}>
+                  <div className="timeline-icon-wrap">
+                    <div className="timeline-icon">{ev.icon}</div>
+                  </div>
+                  <div className="timeline-content">
+                    <div 
+                      className="timeline-title"
+                      style={ev.content ? { cursor: 'pointer' } : {}}
+                      onClick={() => ev.content && setExpandedEventId(expandedEventId === ev.id ? null : ev.id)}
+                    >
+                      {ev.title}
+                    </div>
+                    <div className="timeline-desc">
+                      {ev.date && <span className="timeline-date">{fmtDateTime(ev.date)}</span>}
+                      {ev.desc}
+                    </div>
+                    {expandedEventId === ev.id && ev.content && (
+                      <div className="content-display" style={{ marginTop: 12, fontSize: 13, maxHeight: 300, overflowY: 'auto' }}>
+                        {ev.content}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Modal>

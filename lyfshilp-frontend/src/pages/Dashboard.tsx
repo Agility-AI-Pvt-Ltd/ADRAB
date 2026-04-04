@@ -1,7 +1,7 @@
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { submissionsApi, usersApi } from '../api';
 import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar, TextPreview } from '../components/shared';
-import SubmissionDetail from '../components/SubmissionDetail';
 import CalendarTimeline from '../components/CalendarTimeline';
 import type { DashboardData, Submission, User } from '../types';
 
@@ -10,11 +10,11 @@ const STAKEHOLDER_OPTS = ['', 'parent', 'student', 'principal', 'counsellor', 'c
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Submission | null>(null);
   const [docFilter, setDocFilter] = useState('');
   const [shFilter, setShFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -65,13 +65,8 @@ export default function Dashboard() {
     }
   }
 
-  async function openSubmission(submissionId: string) {
-    try {
-      const { data: submission } = await submissionsApi.get(submissionId);
-      setSelected(submission);
-    } catch (e: any) {
-      toast('error', e.response?.data?.detail ?? 'Could not open submission');
-    }
+  function openSubmission(submissionId: string) {
+    navigate('/submission/' + submissionId);
   }
 
   return (
@@ -255,14 +250,6 @@ export default function Dashboard() {
         submissions={[...(data?.pending ?? []), ...(data?.recent ?? [])]}
         onSelect={(submission) => openSubmission(submission.id)}
       />
-
-      {selected && (
-        <SubmissionDetail
-          submission={selected}
-          onClose={() => setSelected(null)}
-          onUpdated={() => { setSelected(null); load(); }}
-        />
-      )}
     </div>
   );
 }

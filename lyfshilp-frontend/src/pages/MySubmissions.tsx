@@ -1,17 +1,17 @@
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { submissionsApi } from '../api';
 import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, ApprovalBanner, TextPreview } from '../components/shared';
-import SubmissionDetail from '../components/SubmissionDetail';
 import ComposeModal from '../components/ComposeModal';
 import { useAuth } from '../contexts/AuthContext';
 import type { Submission } from '../types';
 
 export default function MySubmissions() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canCompose = user?.role === 'team_member' && user.is_active;
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Submission | null>(null);
   const [composing, setComposing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -129,7 +129,7 @@ export default function MySubmissions() {
                   <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>v{s.version}</td>
                   <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>{fmtDateTime(s.created_at)}</td>
                   <td>
-                    <button className="btn btn-outline btn-sm" onClick={() => setSelected(s)}>
+                    <button className="btn btn-outline btn-sm" onClick={() => navigate('/submission/' + s.id)}>
                       View →
                     </button>
                   </td>
@@ -139,17 +139,6 @@ export default function MySubmissions() {
           </table>
         )}
       </div>
-
-      {selected && (
-        <SubmissionDetail
-          submission={selected}
-          onClose={() => setSelected(null)}
-          onUpdated={(updated) => {
-            setSubmissions(ss => ss.map(s => s.id === updated.id ? updated : s));
-            setSelected(null);
-          }}
-        />
-      )}
 
       {composing && canCompose && (
         <ComposeModal onClose={() => setComposing(false)} onCreated={load} />

@@ -86,6 +86,60 @@ export function Avatar({
   );
 }
 
+export function AvatarGroup({
+  users,
+  max = 3,
+  size = 'md',
+}: {
+  users: Array<{ id: string; name?: string | null; email?: string | null }>;
+  max?: number;
+  size?: 'sm' | 'md' | 'lg';
+}) {
+  const visible = users.slice(0, max);
+  const remaining = users.length - max;
+  
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      {visible.map((u, i) => (
+        <div
+          key={u.id || i}
+          style={{
+            zIndex: max - i,
+            marginLeft: i > 0 ? -8 : 0,
+            borderRadius: '50%',
+            boxShadow: '0 0 0 2px var(--surface)',
+            display: 'flex',
+          }}
+        >
+          <Avatar name={u.name} email={u.email} size={size} />
+        </div>
+      ))}
+      {remaining > 0 && (
+        <div
+          title={`+${remaining} more`}
+          style={{
+            zIndex: 0,
+            marginLeft: -8,
+            borderRadius: '50%',
+            boxShadow: '0 0 0 2px var(--surface)',
+            backgroundColor: 'var(--border)',
+            color: 'var(--ink-mid)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: size === 'sm' ? 28 : size === 'md' ? 34 : 42,
+            height: size === 'sm' ? 28 : size === 'md' ? 34 : 42,
+            fontSize: size === 'sm' ? 11 : size === 'md' ? 12 : 14,
+            fontWeight: 600,
+          }}
+        >
+          +{remaining}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Badge helpers ──────────────────────────────────────────────────────────────
 export function StatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = {
@@ -196,13 +250,13 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'default' | 'lg';
+  size?: 'default' | 'lg' | 'full';
 }
 
 export function Modal({ title, subtitle, onClose, children, footer, size = 'default' }: ModalProps) {
   return createPortal(
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${size === 'lg' ? 'modal-lg' : ''}`}>
+    <div className={`modal-overlay ${size === 'full' ? 'full-overlay' : ''}`} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`modal ${size === 'lg' ? 'modal-lg' : size === 'full' ? 'modal-full' : ''}`}>
         <div className="modal-header">
           <div>
             <div className="modal-title">{title}</div>

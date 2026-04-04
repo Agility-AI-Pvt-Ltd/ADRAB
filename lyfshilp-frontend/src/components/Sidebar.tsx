@@ -5,6 +5,7 @@ import { Avatar } from './shared';
 import { adminApi } from '../api';
 import { useTheme } from '../contexts/ThemeContext';
 import SettingsModal from './SettingsModal';
+import AboutModal from './AboutModal';
 
 const ICONS = {
   dashboard: '⊞',
@@ -23,6 +24,7 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
   const [stakeholders, setStakeholders] = useState<string[]>([]);
   const [showStakeholders, setShowStakeholders] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   const isFounder = user?.role === 'founder' || user?.role === 'admin';
   const canCompose = user?.role === 'team_member' && user.is_active;
@@ -59,7 +61,11 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div 
+        className="sidebar-logo" 
+        style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+        onClick={() => setShowAbout(true)}
+      >
         <div style={{
           width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--ink)',
           color: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -116,13 +122,15 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
             Compose
           </NavLink>
         )}
-        <NavLink
-          to="/submissions"
-          className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-        >
-          <span>{ICONS.submissions}</span>
-          My Submissions
-        </NavLink>
+        {!isFounder && (
+          <NavLink
+            to="/submissions"
+            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+          >
+            <span>{ICONS.submissions}</span>
+            My Submissions
+          </NavLink>
+        )}
 
         <div className="nav-section-label">Preferences</div>
         <button
@@ -237,6 +245,7 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
       </div>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </aside>
   );
 }

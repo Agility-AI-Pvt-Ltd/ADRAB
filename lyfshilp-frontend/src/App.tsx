@@ -11,6 +11,7 @@ import DocumentGuidancePage from './pages/DocumentGuidance';
 import ProfilePage from './pages/Profile';
 import SystemPromptPage from './pages/SystemPrompt';
 import AuditLogPage from './pages/AuditLog';
+import SubmissionPage from './pages/SubmissionPage';
 import ComposeModal from './components/ComposeModal';
 import { Spinner } from './components/shared';
 import { useState } from 'react';
@@ -76,6 +77,7 @@ function AppShell() {
                 <Route path="/admin/audit-log" element={<AuditLogPage />} />
               </>
             )}
+            <Route path="/submission/:id" element={<SubmissionPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
