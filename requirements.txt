@@ -19,6 +19,9 @@ email-validator==2.2.0
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 openai==1.75.0
+langgraph==0.4.1
+langchain-core==0.3.56
+langchain-openai==0.3.14
 
 # ── File handling ─────────────────────────────────────────────────────────────
 python-multipart==0.0.17     # FastAPI file uploads

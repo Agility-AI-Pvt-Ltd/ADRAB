@@ -3,6 +3,8 @@ import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from './shared';
 import { adminApi } from '../api';
+import { useTheme } from '../contexts/ThemeContext';
+import SettingsModal from './SettingsModal';
 
 const ICONS = {
   dashboard: '⊞',
@@ -20,6 +22,7 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
   const location = useLocation();
   const [stakeholders, setStakeholders] = useState<string[]>([]);
   const [showStakeholders, setShowStakeholders] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const isFounder = user?.role === 'founder' || user?.role === 'admin';
   const canCompose = user?.role === 'team_member' && user.is_active;
@@ -120,6 +123,15 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
           <span>{ICONS.submissions}</span>
           My Submissions
         </NavLink>
+
+        <div className="nav-section-label">Preferences</div>
+        <button
+          className="nav-item"
+          onClick={() => setShowSettings(true)}
+        >
+          <span>{ICONS.admin}</span>
+          Settings
+        </button>
 
         {isFounder && (
           <>
@@ -223,6 +235,8 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
           {ICONS.logout}
         </button>
       </div>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </aside>
   );
 }

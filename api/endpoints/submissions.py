@@ -9,6 +9,7 @@ from api.dependencies import CurrentUser, DBSession, FounderOnly
 from core.exceptions import ForbiddenError
 from models.models import Stakeholder
 from schemas.submission import (
+    DraftAnalysisRequest,
     GenerateDraftRequest,
     RefineDraftRequest,
     ReviewAction,
@@ -52,6 +53,20 @@ async def refine_draft(
     service = SubmissionService(session)
     refined = await service.refine_draft(body, current_user)
     return {"draft": refined}
+
+
+@router.post("/analyze-draft")
+async def analyze_draft(
+    body: DraftAnalysisRequest,
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """
+    Analyze a human-authored draft and return score, suggestions, rewrite,
+    and workflow memory before the draft is saved or submitted.
+    """
+    service = SubmissionService(session)
+    return await service.analyze_draft(body, current_user)
 
 
 # ── Submission Lifecycle ──────────────────────────────────────────────────────

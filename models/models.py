@@ -72,6 +72,18 @@ class SubmissionStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
+class WorkflowStage(str, enum.Enum):
+    DRAFT_CREATED = "draft_created"
+    DETERMINISTIC_CONTEXT_READY = "deterministic_context_ready"
+    CONTEXT_ENRICHED = "context_enriched"
+    HUMAN_DRAFT_READY = "human_draft_ready"
+    AI_REVIEW_READY = "ai_review_ready"
+    AWAITING_HUMAN_INPUT = "awaiting_human_input"
+    IMPROVEMENT_READY = "improvement_ready"
+    SUBMITTED_TO_FOUNDER = "submitted_to_founder"
+    FOUNDER_REVIEWED = "founder_reviewed"
+
+
 class AuthProvider(str, enum.Enum):
     LOCAL = "local"
     GOOGLE = "google"
@@ -130,6 +142,12 @@ class Submission(Base):
 
     # Status & versioning
     status: Mapped[SubmissionStatus] = mapped_column(Enum(SubmissionStatus), nullable=False, default=SubmissionStatus.DRAFT)
+    workflow_stage: Mapped[WorkflowStage] = mapped_column(
+        Enum(WorkflowStage),
+        nullable=False,
+        default=WorkflowStage.DRAFT_CREATED,
+    )
+    workflow_memory: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     parent_submission_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("submissions.id"), nullable=True)
 

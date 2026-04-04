@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from models.models import AuthProvider, Stakeholder, Submission, SubmissionStatus, UserRole
+from models.models import AuthProvider, Stakeholder, Submission, SubmissionStatus, User, UserRole
 from core.security import hash_password
 from schemas.submission import AIScorecardResponse, ScoreBreakdown, AISuggestion
 from tests.conftest import auth_headers
@@ -61,7 +61,7 @@ async def test_submit_for_review(client: AsyncClient, team_member):
 
     # Now submit with mocked AI
     with patch(
-        "services.submission_service.AIService.review_document",
+        "services.ai_service.AIService.review_document",
         new_callable=AsyncMock,
         return_value=MOCK_SCORECARD,
     ):
@@ -74,6 +74,28 @@ async def test_submit_for_review(client: AsyncClient, team_member):
     data = resp.json()
     assert data["status"] == "pending"
     assert data["ai_score"] == 78
+    assert data["workflow_stage"] == "submitted_to_founder"
+    assert data["workflow_memory"]["score"] == 78
+
+
+@pytest.mark.asyncio
+async def test_analyze_draft(client: AsyncClient, team_member):
+    with patch(
+        "services.ai_service.AIService.review_document",
+        new_callable=AsyncMock,
+        return_value=MOCK_SCORECARD,
+    ):
+        resp = await client.post(
+            "/api/v1/submissions/analyze-draft",
+            json=SUBMISSION_PAYLOAD,
+            headers=auth_headers(team_member),
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["score"] == 78
+    assert data["workflow_stage"] == "awaiting_human_input"
+    assert len(data["suggestions"]) == 1
 
 
 @pytest.mark.asyncio
@@ -87,7 +109,7 @@ async def test_founder_can_approve(client: AsyncClient, team_member, founder_use
     sub_id = create_resp.json()["id"]
 
     with patch(
-        "services.submission_service.AIService.review_document",
+        "services.ai_service.AIService.review_document",
         new_callable=AsyncMock,
         return_value=MOCK_SCORECARD,
     ):

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from models.models import Stakeholder, SubmissionStatus
+from models.models import Stakeholder, SubmissionStatus, WorkflowStage
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +62,24 @@ class RefineDraftRequest(BaseModel):
     action: str = Field(description="shorter | more_formal | warmer | add_urgency | regenerate")
     doc_type: str
     stakeholder: Stakeholder
+    human_input: Optional[str] = None
+    suggestions: Optional[List[AISuggestion]] = None
+
+
+class DraftAnalysisRequest(BaseModel):
+    doc_type: str
+    stakeholder: Stakeholder
+    content: str = Field(min_length=10)
+    context_form_data: Optional[ContextFormData] = None
+
+
+class DraftAnalysisResponse(BaseModel):
+    score: int = Field(ge=0, le=100)
+    dimensions: ScoreBreakdown
+    suggestions: List[AISuggestion]
+    rewrite: str
+    workflow_stage: WorkflowStage
+    workflow_memory: Dict[str, Any]
 
 
 class SubmissionResponse(BaseModel):
@@ -75,6 +93,8 @@ class SubmissionResponse(BaseModel):
     ai_suggestions: Optional[List]
     ai_rewrite: Optional[str]
     status: SubmissionStatus
+    workflow_stage: WorkflowStage
+    workflow_memory: Optional[Dict]
     version: int
     parent_submission_id: Optional[uuid.UUID]
     file_url: Optional[str]

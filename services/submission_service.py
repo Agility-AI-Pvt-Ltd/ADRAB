@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from core.logging import get_logger
 from db.repositories.submission_repository import SubmissionRepository
-from db.repositories.user_repository import UserRepository
 from models.models import (
     AuditLog,
     Feedback,
@@ -22,21 +21,20 @@ from models.models import (
     User,
     UserRole,
     Visibility,
+    WorkflowStage,
 )
+from pipeline.context import SubmissionPromptContextService
+from pipeline.types import DraftGenerationInput, DraftReviewInput
+from pipeline.workflows import SubmissionWorkflowService
 from schemas.submission import (
+    DraftAnalysisRequest,
+    DraftAnalysisResponse,
     GenerateDraftRequest,
     RefineDraftRequest,
     ReviewAction,
     SubmissionCreate,
 )
-from services.ai_service import AIService
-from services.ai_review_guidance_service import AIReviewGuidanceService
-from services.document_guidance_service import DocumentGuidanceService
-from services.emoji_guidance_service import EmojiGuidanceService
-from services.few_shot_example_service import FewShotExampleService
-from services.knowledge_snippet_service import KnowledgeSnippetService
-from services.stakeholder_guidance_service import StakeholderGuidanceService
-from services.system_prompt_service import SystemPromptService
+from services.submission_workflow_memory_service import SubmissionWorkflowMemoryService
 
 logger = get_logger(__name__)
 
@@ -47,50 +45,57 @@ class SubmissionService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._submission_repo = SubmissionRepository(session)
-        self._user_repo = UserRepository(session)
-        self._prompt_service = SystemPromptService(session)
-        self._ai_review_guidance_service = AIReviewGuidanceService(session)
-        self._document_guidance_service = DocumentGuidanceService(session)
-        self._emoji_guidance_service = EmojiGuidanceService(session)
-        self._few_shot_example_service = FewShotExampleService(session)
-        self._knowledge_snippet_service = KnowledgeSnippetService(session)
-        self._stakeholder_guidance_service = StakeholderGuidanceService(session)
+        self._prompt_context_service = SubmissionPromptContextService(session)
+        self._workflow_service = SubmissionWorkflowService(self._prompt_context_service)
+        self._workflow_memory_service = SubmissionWorkflowMemoryService(session)
 
     # ── Draft generation ──────────────────────────────────────────────────────
 
     async def generate_draft(self, request: GenerateDraftRequest, actor: User) -> str:
         """Ask AI to generate a full draft; returns raw document text."""
+        await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
-        ai = await self._build_ai_service(request.stakeholder)
-        guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
-        emoji_guidance = await self._emoji_guidance_service.render_guidance_block(request.doc_type, request.stakeholder)
-        few_shot_examples = await self._few_shot_example_service.render_examples_block(request.doc_type, request.stakeholder)
-        assembled_guidance = "\n\n".join(
-            block for block in (guidance, emoji_guidance, few_shot_examples) if block
+        result = await self._workflow_service.generate_draft(
+            DraftGenerationInput(
+                doc_type=request.doc_type,
+                stakeholder=request.stakeholder,
+                context_form_data=request.context_form_data.fields,
+            )
         )
-        return await ai.generate_draft(
-            doc_type=request.doc_type,
-            stakeholder=request.stakeholder,
-            context=request.context_form_data.fields,
-            guidance=assembled_guidance,
+        return result.draft
+
+    async def analyze_draft(self, request: DraftAnalysisRequest, actor: User) -> DraftAnalysisResponse:
+        """Analyze a human-authored draft before it is saved or submitted."""
+        await self._workflow_memory_service.ensure_schema()
+        self._require_team_member(actor)
+        result = await self._workflow_service.review_draft(
+            DraftReviewInput(
+                doc_type=request.doc_type,
+                stakeholder=request.stakeholder,
+                content=request.content,
+            )
+        )
+        return DraftAnalysisResponse(
+            score=result.scorecard.score,
+            dimensions=result.scorecard.dimensions,
+            suggestions=result.scorecard.suggestions,
+            rewrite=result.scorecard.rewrite,
+            workflow_stage=result.workflow_stage,
+            workflow_memory=result.workflow_memory,
         )
 
     async def refine_draft(self, request: RefineDraftRequest, actor: User) -> str:
         """Apply a refinement action (shorter, warmer, etc.) to draft text."""
+        await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
-        ai = await self._build_ai_service(request.stakeholder)
-        guidance = await self._document_guidance_service.render_guidance_block(request.doc_type)
-        emoji_guidance = await self._emoji_guidance_service.render_guidance_block(request.doc_type, request.stakeholder)
-        few_shot_examples = await self._few_shot_example_service.render_examples_block(request.doc_type, request.stakeholder)
-        assembled_guidance = "\n\n".join(
-            block for block in (guidance, emoji_guidance, few_shot_examples) if block
-        )
-        return await ai.refine_draft(request, assembled_guidance)
+        result = await self._workflow_service.refine_draft(request)
+        return result.draft
 
     # ── Submission lifecycle ──────────────────────────────────────────────────
 
     async def create_submission(self, data: SubmissionCreate, actor: User) -> Submission:
         """Save a new submission as DRAFT (no AI check yet)."""
+        await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
         submission = Submission(
             user_id=actor.id,
@@ -99,6 +104,12 @@ class SubmissionService:
             content=data.content,
             context_form_data=data.context_form_data.model_dump() if data.context_form_data else None,
             status=SubmissionStatus.DRAFT,
+            workflow_stage=WorkflowStage.DRAFT_CREATED,
+            workflow_memory=self._workflow_memory_service.initial_memory(
+                doc_type=data.doc_type,
+                stakeholder=data.stakeholder.value,
+                context_form_data=data.context_form_data.model_dump() if data.context_form_data else None,
+            ),
             version=1,
         )
         submission = await self._submission_repo.create(submission)
@@ -107,22 +118,20 @@ class SubmissionService:
 
     async def submit_for_review(self, submission_id: UUID, actor: User) -> Submission:
         """Run AI pre-check then mark submission as PENDING."""
+        await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
         submission = await self._get_owned_submission(submission_id, actor)
         if submission.status not in (SubmissionStatus.DRAFT, SubmissionStatus.REJECTED):
             raise ValidationError("Only draft or rejected submissions can be (re)submitted.")
 
-        ai = await self._build_ai_service(submission.stakeholder)
-        document_guidance = await self._document_guidance_service.render_guidance_block(submission.doc_type)
-        emoji_guidance = await self._emoji_guidance_service.render_guidance_block(submission.doc_type, submission.stakeholder)
-        review_guidance = await self._ai_review_guidance_service.render_guidance_block()
-        guidance = f"{document_guidance}\n\n{emoji_guidance}\n\n{review_guidance}"
-        scorecard = await ai.review_document(
-            content=submission.content,
-            doc_type=submission.doc_type,
-            stakeholder=submission.stakeholder,
-            guidance=guidance,
+        review_result = await self._workflow_service.review_draft(
+            DraftReviewInput(
+                content=submission.content,
+                doc_type=submission.doc_type,
+                stakeholder=submission.stakeholder,
+            )
         )
+        scorecard = review_result.scorecard
 
         await self._submission_repo.update(
             submission,
@@ -131,6 +140,12 @@ class SubmissionService:
             ai_suggestions=[s.model_dump() for s in scorecard.suggestions],
             ai_rewrite=scorecard.rewrite,
             status=SubmissionStatus.PENDING,
+            workflow_stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
+            workflow_memory=self._workflow_memory_service.append_event(
+                review_result.workflow_memory,
+                stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
+                payload={"label": "Submission sent to founder review"},
+            ),
             submitted_at=datetime.now(timezone.utc),
         )
 
@@ -146,6 +161,7 @@ class SubmissionService:
         founder: User,
     ) -> Submission:
         """Founder approves, approves-with-edits, or rejects a submission."""
+        await self._workflow_memory_service.ensure_schema()
         self._require_founder(founder)
         submission = await self._submission_repo.get_with_relations(submission_id)
         if submission is None:
@@ -173,6 +189,12 @@ class SubmissionService:
         await self._submission_repo.update(
             submission,
             status=SubmissionStatus.APPROVED,
+            workflow_stage=WorkflowStage.FOUNDER_REVIEWED,
+            workflow_memory=self._workflow_memory_service.append_event(
+                submission.workflow_memory,
+                stage=WorkflowStage.FOUNDER_REVIEWED,
+                payload={"label": "Founder approved submission", "action": "approve"},
+            ),
             reviewed_at=datetime.now(timezone.utc),
         )
         await self._set_visibility(submission, data)
@@ -184,6 +206,12 @@ class SubmissionService:
             submission,
             content=data.edited_content,
             status=SubmissionStatus.APPROVED,
+            workflow_stage=WorkflowStage.FOUNDER_REVIEWED,
+            workflow_memory=self._workflow_memory_service.append_event(
+                submission.workflow_memory,
+                stage=WorkflowStage.FOUNDER_REVIEWED,
+                payload={"label": "Founder approved with edits", "action": "approve_with_edits"},
+            ),
             reviewed_at=datetime.now(timezone.utc),
         )
         await self._set_visibility(submission, data)
@@ -192,14 +220,20 @@ class SubmissionService:
         # Generate AI rejection note if founder hasn't written one
         ai_note: Optional[str] = None
         if submission.ai_scorecard:
-            ai = await self._build_ai_service()
-            ai_note = await ai.generate_rejection_note(
-                submission.ai_scorecard, submission.doc_type
+            ai_note = await self._workflow_service.generate_rejection_note(
+                submission.ai_scorecard,
+                submission.doc_type,
             )
 
         await self._submission_repo.update(
             submission,
             status=SubmissionStatus.REJECTED,
+            workflow_stage=WorkflowStage.FOUNDER_REVIEWED,
+            workflow_memory=self._workflow_memory_service.append_event(
+                submission.workflow_memory,
+                stage=WorkflowStage.FOUNDER_REVIEWED,
+                payload={"label": "Founder rejected submission", "action": "reject"},
+            ),
             reviewed_at=datetime.now(timezone.utc),
         )
 
@@ -228,6 +262,7 @@ class SubmissionService:
         actor: User,
     ) -> Submission:
         """Create a new version linked to the original rejected submission."""
+        await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
         original = await self._get_owned_submission(original_id, actor)
         if original.status != SubmissionStatus.REJECTED:
@@ -241,6 +276,12 @@ class SubmissionService:
             content=new_content,
             context_form_data=original.context_form_data,
             status=SubmissionStatus.DRAFT,
+            workflow_stage=WorkflowStage.DRAFT_CREATED,
+            workflow_memory=self._workflow_memory_service.initial_memory(
+                doc_type=original.doc_type,
+                stakeholder=original.stakeholder.value,
+                context_form_data=original.context_form_data,
+            ),
             version=original.version + 1,
             parent_submission_id=root_id,
         )
@@ -257,6 +298,7 @@ class SubmissionService:
         stakeholder=None,
         user_id=None,
     ) -> dict:
+        await self._workflow_memory_service.ensure_schema()
         self._require_founder(founder)
         pending = await self._submission_repo.get_pending_for_founders(
             doc_type=doc_type, stakeholder=stakeholder, user_id=user_id
@@ -265,9 +307,11 @@ class SubmissionService:
         return {"counts": counts, "pending": pending}
 
     async def get_my_submissions(self, actor: User) -> List[Submission]:
+        await self._workflow_memory_service.ensure_schema()
         return await self._submission_repo.get_by_user(actor.id)
 
     async def get_submission_detail(self, submission_id: UUID, actor: User) -> Submission:
+        await self._workflow_memory_service.ensure_schema()
         submission = await self._submission_repo.get_with_relations(submission_id)
         if submission is None:
             raise NotFoundError()
@@ -277,6 +321,7 @@ class SubmissionService:
         return submission
 
     async def get_version_history(self, submission_id: UUID, actor: User) -> List[Submission]:
+        await self._workflow_memory_service.ensure_schema()
         self._require_founder(actor)
         return await self._submission_repo.get_version_history(submission_id)
 
@@ -287,16 +332,6 @@ class SubmissionService:
         if actor.role != UserRole.FOUNDER and sub.user_id != actor.id:
             raise ForbiddenError("You do not own this submission.")
         return sub
-
-    async def _build_ai_service(self, stakeholder=None) -> AIService:
-        prompt_text = await self._prompt_service.get_active_prompt_text()
-        knowledge_block = await self._knowledge_snippet_service.render_prompt_block()
-        if knowledge_block:
-            prompt_text = f"{prompt_text}\n\n{knowledge_block}"
-        if stakeholder is not None:
-            stakeholder_block = await self._stakeholder_guidance_service.render_guidance_block(stakeholder)
-            prompt_text = f"{prompt_text}\n\n{stakeholder_block}"
-        return AIService(system_prompt=prompt_text)
 
     def _require_team_member(self, actor: User) -> None:
         if actor.role != UserRole.TEAM_MEMBER:

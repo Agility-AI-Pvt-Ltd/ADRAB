@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { submissionsApi, usersApi } from '../api';
 import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar, TextPreview } from '../components/shared';
 import SubmissionDetail from '../components/SubmissionDetail';
+import CalendarTimeline from '../components/CalendarTimeline';
 import type { DashboardData, Submission, User } from '../types';
 
 const DOC_TYPE_OPTS = ['', 'proposal', 'cold_email', 'reply_email', 'whatsapp', 'linkedin', 'ad_creative', 'payment_followup'];
@@ -234,6 +235,8 @@ export default function Dashboard() {
           </table>
         )}
       </div>
+
+      <CalendarTimeline submissions={data?.pending ?? []} />
 
       {selected && (
         <SubmissionDetail
