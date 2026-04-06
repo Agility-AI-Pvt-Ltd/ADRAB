@@ -9,6 +9,9 @@ from api.dependencies import CurrentUser, DBSession
 from schemas.auth import (
     GoogleCallbackRequest,
     LoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    PasswordResetResponse,
     RefreshRequest,
     TokenResponse,
 )
@@ -72,6 +75,27 @@ async def refresh(body: RefreshRequest, session: DBSession):
     """Exchange a refresh token for a new access + refresh token pair."""
     service = AuthService(session)
     return await service.refresh_tokens(body.refresh_token)
+
+
+@router.post("/forgot-password", response_model=PasswordResetResponse)
+async def forgot_password(body: PasswordResetRequest, session: DBSession):
+    """
+    Generate and send a password reset link if the account exists.
+    Always returns a generic success response.
+    """
+    service = AuthService(session)
+    await service.request_password_reset(body.email)
+    return {"message": "If an account exists for that email, a password reset link has been sent."}
+
+
+@router.post("/reset-password", response_model=PasswordResetResponse)
+async def reset_password(body: PasswordResetConfirmRequest, session: DBSession):
+    """
+    Consume a one-time password reset token and set a new password.
+    """
+    service = AuthService(session)
+    await service.reset_password(body.token, body.new_password)
+    return {"message": "Password reset successful. You can now sign in with your new password."}
 
 
 @router.get("/me", response_model=UserResponse)

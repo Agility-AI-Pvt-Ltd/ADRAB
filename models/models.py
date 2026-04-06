@@ -111,6 +111,7 @@ class User(Base):
     # Relationships
     submissions: Mapped[List["Submission"]] = relationship("Submission", back_populates="author", foreign_keys="Submission.user_id")
     audit_logs: Mapped[List["AuditLog"]] = relationship("AuditLog", back_populates="actor")
+    password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship("PasswordResetToken", back_populates="user", foreign_keys="PasswordResetToken.user_id")
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"
@@ -182,6 +183,23 @@ class Feedback(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
 
     submission: Mapped["Submission"] = relationship("Submission", back_populates="feedback")
+
+
+# ---------------------------------------------------------------------------
+# Password Reset Tokens
+# ---------------------------------------------------------------------------
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+
+    user: Mapped["User"] = relationship("User", back_populates="password_reset_tokens")
 
 
 # ---------------------------------------------------------------------------

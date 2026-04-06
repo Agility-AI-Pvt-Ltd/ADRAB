@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from '../components/shared';
@@ -74,6 +75,11 @@ export default function Login() {
               placeholder="••••••••"
               required
             />
+            <div style={{ marginTop: 8, textAlign: 'right' }}>
+              <Link to="/forgot-password" style={{ color: 'var(--green-700)', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
+                Forgot password?
+              </Link>
+            </div>
           </div>
 
           <button

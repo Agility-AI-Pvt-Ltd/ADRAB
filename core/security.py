@@ -63,6 +63,7 @@ def enforce_allowed_domain(email: str) -> None:
 
     domain = normalized_email.split("@")[-1]
     if domain != settings.ALLOWED_EMAIL_DOMAIN.lower():
+        print(f"Domain enforcement failed for email: {normalized_email}")
         raise ForbiddenError(
-            f"Only @{settings.ALLOWED_EMAIL_DOMAIN} accounts and approved exception emails are permitted."
+            f"Email '{normalized_email}' is not permitted. Only @{settings.ALLOWED_EMAIL_DOMAIN} accounts and approved exception emails are permitted."
         )

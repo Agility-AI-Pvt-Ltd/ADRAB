@@ -55,6 +55,12 @@ export const authApi = {
 
   refresh: (refresh_token: string) =>
     client.post<TokenResponse>('/auth/refresh', { refresh_token }),
+
+  forgotPassword: (email: string) =>
+    client.post<{ message: string }>('/auth/forgot-password', { email }),
+
+  resetPassword: (token: string, new_password: string) =>
+    client.post<{ message: string }>('/auth/reset-password', { token, new_password }),
 };
 
 // ── Submissions ───────────────────────────────────────────────────────────────
@@ -189,6 +195,8 @@ export const adminApi = {
 // ── Users ───────────────────────────────────────────────────────────────────
 export const usersApi = {
   list: () => client.get<User[]>('/users/'),
+  createFounder: (body: { name: string; email: string; password: string; department?: 'founders' | null }) =>
+    client.post<User>('/users/founders', body),
   me: () => client.get<User>('/users/me/profile'),
   updateMe: (body: Partial<Pick<User, 'name' | 'department'>>) =>
     client.patch<User>('/users/me/profile', body),

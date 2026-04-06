@@ -3,7 +3,9 @@ import { useAuth } from './contexts/AuthContext';
 import { ToastProvider, ApprovalBanner } from './components/shared';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
+import ForgotPasswordPage from './pages/ForgotPassword';
 import GoogleCallback from './pages/GoogleCallback';
+import ResetPasswordPage from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import MySubmissions from './pages/MySubmissions';
 import UsersPage from './pages/Users';
@@ -113,6 +115,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/google/callback" element={<GoogleCallback />} />
       <Route
         path="/*"

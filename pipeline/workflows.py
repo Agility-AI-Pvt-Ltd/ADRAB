@@ -504,3 +504,17 @@ class SubmissionWorkflowService:
             "ai_calls": [item.get("operation") for item in trace.get("ai_calls", [])],
         }
         logger.info("Workflow trace | %s", json.dumps(summary, ensure_ascii=True))
+        
+        import os
+        from datetime import datetime, timezone
+        try:
+            os.makedirs("logs", exist_ok=True)
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            graph_name = trace.get("graph_name", "unknown")
+            trace_id = trace.get("trace_id", "unknown")[:8]
+            
+            trace_filename = f"logs/trace_{timestamp}_{graph_name}_{trace_id}.json"
+            with open(trace_filename, "w", encoding="utf-8") as f:
+                json.dump(trace, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning("Failed to write full workflow trace to log file", exc_info=True)

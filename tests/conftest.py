@@ -88,6 +88,21 @@ async def team_member(db_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture
+async def admin_user(db_session: AsyncSession) -> User:
+    user = User(
+        name="Test Admin",
+        email="admin@agilityai.in",
+        hashed_password=hash_password("password123"),
+        role=UserRole.ADMIN,
+        auth_provider=AuthProvider.LOCAL,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
 async def other_team_member(db_session: AsyncSession) -> User:
     user = User(
         name="Another Member",

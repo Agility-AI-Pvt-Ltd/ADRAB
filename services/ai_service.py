@@ -81,12 +81,7 @@ ALWAYS USE:
 - Outcome-oriented language
 
 EMOJI RULES:
-- Proposals, Cold Emails, Reply Emails, LinkedIn, Payment Follow-ups: NEVER use emoji.
-- WhatsApp to Parents: max 1-2 emoji only for warmth (e.g. ⭐ ✅).
-- WhatsApp to Students: max 2-3 emoji, never mid-sentence.
-- WhatsApp to Principals: avoid emoji.
-- Ad Creative: context-dependent; only if platform calls for it.
-- Emoji go at the start of a bullet or line, never mid-sentence or after a full stop.
+- Emoji rules will be appended dynamically by the system engine based on stakeholder and document type context. Follow them strictly.
 """.strip()
 
 

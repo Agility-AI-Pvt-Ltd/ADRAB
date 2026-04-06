@@ -4,7 +4,12 @@ Handles Google OAuth flow and email+password sign-in.
 All auth logic lives here; the API layer is thin.
 """
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+
 import httpx
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -19,9 +24,10 @@ from core.security import (
     verify_password,
 )
 from db.repositories.user_repository import UserRepository
-from models.models import AuthProvider, User, UserRole
+from models.models import AuthProvider, PasswordResetToken, User, UserRole
 from schemas.auth import TokenResponse
 from schemas.user import UserCreate
+from services.email_service import EmailService
 
 logger = get_logger(__name__)
 
@@ -34,7 +40,9 @@ class AuthService:
     """Orchestrates all authentication use-cases."""
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._user_repo = UserRepository(session)
+        self._email_service = EmailService()
 
     # ── Email + Password ──────────────────────────────────────────────────────
 
@@ -56,6 +64,28 @@ class AuthService:
             role=data.role,
             department=data.department,
             auth_provider=AuthProvider.LOCAL,
+        )
+        return await self._user_repo.create(user)
+
+    async def create_founder(self, data: UserCreate, actor: User) -> User:
+        if actor.role != UserRole.FOUNDER:
+            raise ForbiddenError("Only an existing founder can create another founder account.")
+
+        email = data.email.lower()
+        enforce_allowed_domain(email)
+
+        existing = await self._user_repo.get_by_email(email)
+        if existing:
+            raise ConflictError(f"Account with email '{email}' already exists.")
+
+        user = User(
+            name=data.name,
+            email=email,
+            hashed_password=hash_password(data.password),
+            role=UserRole.FOUNDER,
+            department=data.department,
+            auth_provider=AuthProvider.LOCAL,
+            is_active=True,
         )
         return await self._user_repo.create(user)
 
@@ -121,6 +151,7 @@ class AuthService:
                     google_sub=google_sub,
                     auth_provider=AuthProvider.GOOGLE,
                     role=UserRole.TEAM_MEMBER,
+                    is_active=False,
                 )
                 user = await self._user_repo.create(user)
 
@@ -143,6 +174,65 @@ class AuthService:
 
         return self._issue_tokens(user)
 
+    async def request_password_reset(self, email: str) -> None:
+        normalized_email = email.lower()
+
+        try:
+            enforce_allowed_domain(normalized_email)
+        except ForbiddenError:
+            return
+
+        user = await self._user_repo.get_by_email(normalized_email)
+        if user is None or (not user.is_active and user.role != UserRole.TEAM_MEMBER):
+            return
+
+        await self._session.execute(
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used_at.is_(None),
+            )
+            .values(used_at=datetime.now(timezone.utc))
+        )
+
+        raw_token = secrets.token_urlsafe(32)
+        token_record = PasswordResetToken(
+            user_id=user.id,
+            token_hash=self._hash_reset_token(raw_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES),
+        )
+        self._session.add(token_record)
+        await self._session.flush()
+
+        reset_link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={raw_token}"
+        await self._email_service.send_password_reset_email(user.email, user.name, reset_link)
+
+    async def reset_password(self, token: str, new_password: str) -> None:
+        stmt = (
+            select(PasswordResetToken)
+            .where(PasswordResetToken.token_hash == self._hash_reset_token(token))
+        )
+        result = await self._session.execute(stmt)
+        reset_record = result.scalar_one_or_none()
+
+        now = datetime.now(timezone.utc)
+        if (
+            reset_record is None
+            or reset_record.used_at is not None
+            or reset_record.expires_at <= now
+        ):
+            raise AuthenticationError("This password reset link is invalid or has expired.")
+
+        user = await self._user_repo.get(reset_record.user_id)
+        if user is None or (not user.is_active and user.role != UserRole.TEAM_MEMBER):
+            raise AuthenticationError("This password reset link is invalid or has expired.")
+
+        user.hashed_password = hash_password(new_password)
+        user.auth_provider = AuthProvider.LOCAL if user.auth_provider == AuthProvider.LOCAL else user.auth_provider
+        reset_record.used_at = now
+        self._session.add(user)
+        self._session.add(reset_record)
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _issue_tokens(self, user: User) -> TokenResponse:
@@ -151,6 +241,10 @@ class AuthService:
             access_token=create_access_token(str(user.id), extra=extra),
             refresh_token=create_refresh_token(str(user.id)),
         )
+
+    @staticmethod
+    def _hash_reset_token(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     async def _exchange_code(self, code: str) -> dict:
         async with httpx.AsyncClient() as client:

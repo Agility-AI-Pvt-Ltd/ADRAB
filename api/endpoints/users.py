@@ -13,9 +13,11 @@ from schemas.user import (
     ChangePasswordRequest,
     DeleteAccountRequest,
     SelfUserUpdate,
+    UserCreate,
     UserResponse,
     UserUpdate,
 )
+from services.auth_service import AuthService
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -25,6 +27,13 @@ async def list_users(session: DBSession):
     """Founders & admins: list all users, with pending team-member approvals first."""
     repo = UserRepository(session)
     return await repo.get_all_users()
+
+
+@router.post("/founders", response_model=UserResponse, status_code=201, dependencies=[FounderOnly])
+async def create_founder_account(body: UserCreate, current_user: CurrentUser, session: DBSession):
+    """Founder-only path to create another founder account from the dashboard."""
+    service = AuthService(session)
+    return await service.create_founder(body, current_user)
 
 
 @router.get("/me/profile", response_model=UserResponse)

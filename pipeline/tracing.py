@@ -66,3 +66,21 @@ def append_ai_call(
             "user_prompt": user_prompt,
         }
     )
+    
+    import os
+    from datetime import datetime, timezone
+    import logging
+    try:
+        os.makedirs("logs/ai_prompts", exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        trace_id = trace.get("trace_id", "unknown")[:8]
+        
+        filename = f"logs/ai_prompts/prompt_{timestamp}_{operation}_{trace_id}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"TIME: {datetime.now(timezone.utc).isoformat()}\n")
+            f.write(f"OPERATION: {operation} | MODEL: {model}\n")
+            f.write(f"{'-'*80}\nSYSTEM PROMPT:\n{system_prompt}\n")
+            f.write(f"{'-'*80}\nUSER PROMPT:\n{user_prompt}\n")
+            f.write(f"{'='*80}\n")
+    except Exception as e:
+        logging.getLogger(__name__).warning("Failed to write AI trace to log file", exc_info=True)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usersApi } from '../api';
 import { Avatar, Spinner, useToast } from '../components/shared';
+import { useAuth } from '../contexts/AuthContext';
 import type { TeamDepartment, User } from '../types';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -10,6 +11,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +22,14 @@ export default function UsersPage() {
   const [savingDepartmentUserId, setSavingDepartmentUserId] = useState<string | null>(null);
   const [togglingStatusUserId, setTogglingStatusUserId] = useState<string | null>(null);
   const [departmentDrafts, setDepartmentDrafts] = useState<Record<string, TeamDepartment | ''>>({});
+  const [creatingFounder, setCreatingFounder] = useState(false);
+  const [founderForm, setFounderForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+  });
+
+  const canCreateFounder = currentUser?.role === 'founder';
 
   async function load() {
     setLoading(true);
@@ -79,6 +89,30 @@ export default function UsersPage() {
     }
   }
 
+  async function createFounder() {
+    if (!founderForm.name.trim() || !founderForm.email.trim() || founderForm.password.length < 8) {
+      toast('error', 'Name, work email, and an 8+ character password are required');
+      return;
+    }
+
+    setCreatingFounder(true);
+    try {
+      await usersApi.createFounder({
+        name: founderForm.name.trim(),
+        email: founderForm.email.trim(),
+        password: founderForm.password,
+        department: 'founders',
+      });
+      toast('success', 'Founder account created');
+      setFounderForm({ name: '', email: '', password: '' });
+      await load();
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not create founder account');
+    } finally {
+      setCreatingFounder(false);
+    }
+  }
+
   const filtered = users.filter(user => {
     const matchesRole = !roleFilter || user.role === roleFilter;
     const matchesStatus = !statusFilter || (statusFilter === 'active' ? user.is_active : !user.is_active);
@@ -98,6 +132,56 @@ export default function UsersPage() {
 
   return (
     <div className="content">
+      {canCreateFounder && (
+        <div className="table-card" style={{ marginBottom: 20 }}>
+          <div className="table-header">
+            <span className="table-title">Add Founder</span>
+            <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+              Only founders can create other founder accounts
+            </span>
+          </div>
+          <div style={{ padding: '0 24px 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Name</label>
+              <input
+                className="form-input"
+                value={founderForm.name}
+                onChange={e => setFounderForm(form => ({ ...form, name: e.target.value }))}
+                placeholder="Founder name"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Work Email</label>
+              <input
+                className="form-input"
+                type="email"
+                value={founderForm.email}
+                onChange={e => setFounderForm(form => ({ ...form, email: e.target.value }))}
+                placeholder="name@agilityai.in"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Temporary Password</label>
+              <input
+                className="form-input"
+                type="password"
+                value={founderForm.password}
+                onChange={e => setFounderForm(form => ({ ...form, password: e.target.value }))}
+                placeholder="Minimum 8 characters"
+              />
+            </div>
+          </div>
+          <div style={{ padding: '0 24px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+              New founders are created as active local accounts in the Founders department.
+            </span>
+            <button className="btn btn-primary" onClick={createFounder} disabled={creatingFounder}>
+              {creatingFounder ? 'Creating…' : 'Add Founder'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="stats-row">
         <div className="stat-card total">
           <div className="stat-label">Total Users</div>

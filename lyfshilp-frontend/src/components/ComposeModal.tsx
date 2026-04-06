@@ -311,8 +311,12 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     setBaseDraft(null);
   }
 
-  function useDraftFromChat(draftContent: string) {
+  function useDraftFromChat(draftContent: string, analysis?: DraftAnalysisResponse) {
     setDraft(draftContent);
+    if (analysis) {
+      setExistingDraftAnalysis(analysis);
+      setExistingDraftAnalyzedContent(draftContent);
+    }
     setStep('draft');
   }
 
@@ -331,7 +335,6 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   }
 
   function getCurrentPrecheckPayload() {
-    if (step !== 'existing_draft') return {};
     if (!existingDraftAnalysis || existingDraftAnalyzedContent !== draft) return {};
     return {
       ai_precheck: {
@@ -821,7 +824,22 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                                 <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Improvement</div>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: msg.analysis.dimensions.improvement_scope < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.dimensions.improvement_scope}</div>
                               </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Grammar</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: (msg.analysis.grammar_check?.score ?? 0) < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.grammar_check?.score ?? '—'}</div>
+                              </div>
                             </div>
+                            
+                            {msg.analysis.grammar_check?.notes?.length ? (
+                              <div style={{ marginTop: 16 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check Notes</div>
+                                <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--ink-soft)' }}>
+                                  {msg.analysis.grammar_check.notes.map((note, idx) => (
+                                    <li key={idx} style={{ marginBottom: 4 }}>{note}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                         {msg.analysis.suggestions.length > 0 && (
@@ -834,7 +852,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                             </ul>
                           </div>
                         )}
-                        <button className="btn btn-primary" onClick={() => useDraftFromChat(msg.content)}>
+                        <button className="btn btn-primary" onClick={() => useDraftFromChat(msg.content, msg.analysis)}>
                           Use this Draft →
                         </button>
                         {renderTraceSection('Draft Generation Trace', msg.draftTrace)}
