@@ -15,13 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from api.router import api_router
 from core.config import settings
 from core.logging import configure_logging, get_logger
-from db.session import close_db, get_db_context, init_db
-from services.ai_review_guidance_service import AIReviewGuidanceService
-from services.document_guidance_service import DocumentGuidanceService
-from services.emoji_guidance_service import EmojiGuidanceService
-from services.few_shot_example_service import FewShotExampleService
-from services.stakeholder_guidance_service import StakeholderGuidanceService
-from services.system_prompt_service import SystemPromptService
+from db.session import close_db, init_db
 from scripts.seed_ai_review_guidance import seed_ai_review_guidance
 from scripts.seed_document_guidance import seed_document_guidance
 from scripts.seed_emoji_guidance import seed_emoji_guidance
@@ -51,7 +45,11 @@ async def run_startup_seed_scripts() -> None:
 
     for label, task in seed_tasks:
         logger.info("Running startup seed script: %s", label)
-        await task(overwrite=False)
+        try:
+            await task(overwrite=False)
+        except Exception:
+            logger.exception("Startup seed script failed: %s", label)
+            raise
 
 
 @asynccontextmanager
@@ -61,16 +59,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
     if settings.DEBUG or settings.AUTO_INIT_DB:
-        # In local/dev, auto-create tables. Set AUTO_INIT_DB=false to require migrations.
-        await init_db()
-        async with get_db_context() as session:
-            await AIReviewGuidanceService(session).ensure_seeded()
-            await DocumentGuidanceService(session).ensure_seeded()
-            await EmojiGuidanceService(session).ensure_seeded()
-            await FewShotExampleService(session).ensure_seeded()
-            await StakeholderGuidanceService(session).ensure_seeded()
-            await SystemPromptService(session).ensure_seeded()
-        await run_startup_seed_scripts()
+        # In local/dev and bootstrap deployments, auto-create tables and run
+        # the reusable seed scripts once. The scripts are idempotent.
+        try:
+            await init_db()
+            await run_startup_seed_scripts()
+        except Exception:
+            logger.exception("Application startup failed during DB init / seed phase")
+            raise
 
     yield
 
