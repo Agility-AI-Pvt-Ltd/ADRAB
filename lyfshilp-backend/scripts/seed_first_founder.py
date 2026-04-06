@@ -25,7 +25,7 @@ from models.models import AuthProvider, TeamDepartment, User, UserRole
 logger = get_logger(__name__)
 
 
-async def seed_first_founder() -> None:
+async def seed_first_founder(*, overwrite: bool = False) -> None:
     await init_db()
 
     founder_email = settings.FIRST_FOUNDER_EMAIL.lower()
