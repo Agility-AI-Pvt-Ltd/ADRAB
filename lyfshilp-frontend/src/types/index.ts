@@ -48,6 +48,11 @@ export interface ScoreBreakdown {
   improvement_scope: number;
 }
 
+export interface GrammarCheck {
+  score: number;
+  notes: string[];
+}
+
 export interface AISuggestion {
   original: string;
   replacement: string;
@@ -66,6 +71,7 @@ export interface Submission {
   ai_scorecard: {
     score?: number;
     dimensions?: ScoreBreakdown;
+    grammar_check?: GrammarCheck;
     suggestions?: AISuggestion[];
     rewrite?: string;
     tone_voice?: number;
@@ -100,6 +106,7 @@ export interface Submission {
 
 export interface DashboardData {
   pending: Submission[];
+  approved?: Submission[];
   recent?: Submission[];
   counts: {
     total: number;
@@ -174,12 +181,19 @@ export interface DraftAnalysisResponse {
     missing_elements: number;
     improvement_scope: number;
   };
+  grammar_check?: GrammarCheck | null;
   suggestions: {
     original: string;
     replacement: string;
     reason: string;
   }[];
   rewrite: string;
+  workflow_stage: string;
+  workflow_memory: any;
+}
+
+export interface DraftWorkflowResponse {
+  draft: string;
   workflow_stage: string;
   workflow_memory: any;
 }

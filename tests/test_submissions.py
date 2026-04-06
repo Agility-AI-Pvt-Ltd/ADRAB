@@ -6,7 +6,7 @@ from httpx import AsyncClient
 
 from models.models import AuthProvider, Stakeholder, Submission, SubmissionStatus, User, UserRole
 from core.security import hash_password
-from schemas.submission import AIScorecardResponse, ScoreBreakdown, AISuggestion
+from schemas.submission import AIScorecardResponse, ScoreBreakdown, AISuggestion, GrammarCheckResponse
 from tests.conftest import auth_headers
 
 MOCK_SCORECARD = AIScorecardResponse(
@@ -17,6 +17,13 @@ MOCK_SCORECARD = AIScorecardResponse(
         stakeholder_fit=15,
         missing_elements=14,
         improvement_scope=15,
+    ),
+    grammar_check=GrammarCheckResponse(
+        score=17,
+        notes=[
+            "Minor tightening needed in sentence openings.",
+            "One punctuation pass would improve polish.",
+        ],
     ),
     suggestions=[
         AISuggestion(
@@ -97,6 +104,7 @@ async def test_analyze_draft(client: AsyncClient, team_member):
     assert resp.status_code == 200
     data = resp.json()
     assert data["score"] == 78
+    assert data["grammar_check"]["score"] == 17
     assert data["workflow_stage"] == "awaiting_human_input"
     assert len(data["suggestions"]) == 1
 

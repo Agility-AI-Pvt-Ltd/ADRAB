@@ -8,6 +8,7 @@ interface ChatMessage {
   role: 'user' | 'ai';
   content: string;
   analysis?: DraftAnalysisResponse;
+  draftTrace?: any;
 }
 
 const STAKEHOLDERS: { value: Stakeholder; label: string }[] = [
@@ -28,7 +29,7 @@ const REFINE_ACTIONS = [
   { action: 'regenerate', label: '↺ Regenerate' },
 ];
 
-type Step = 'type' | 'prompt_method' | 'context' | 'custom_prompt' | 'draft' | 'done';
+type Step = 'type' | 'prompt_method' | 'context' | 'custom_prompt' | 'existing_draft' | 'draft' | 'done';
 
 interface Props { onClose: () => void; onCreated: () => void; }
 
@@ -151,6 +152,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
+  const [existingDraftAnalysis, setExistingDraftAnalysis] = useState<DraftAnalysisResponse | null>(null);
+  const [existingDraftAnalyzedContent, setExistingDraftAnalyzedContent] = useState('');
+  const [extractingFile, setExtractingFile] = useState(false);
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [refining, setRefining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -160,6 +165,42 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   // Suggestions from the most recent AI message
   const lastAiMsg = [...chatMessages].reverse().find(m => m.role === 'ai');
   const lastSuggestions = lastAiMsg?.analysis?.suggestions ?? [];
+
+  function renderTraceSection(title: string, workflowMemory: any) {
+    const trace = workflowMemory?.trace;
+    if (!trace) return null;
+
+    return (
+      <details style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--white)' }}>
+        <summary style={{ cursor: 'pointer', padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>
+          {title}
+        </summary>
+        <div style={{ padding: '0 16px 16px', display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+            <div><strong>Graph:</strong> {trace.graph_name}</div>
+            <div><strong>Trace ID:</strong> {trace.trace_id}</div>
+            <div><strong>Nodes:</strong> {(trace.nodes_executed ?? []).map((item: any) => item.node).join(' → ') || '—'}</div>
+            <div><strong>Few-shot examples:</strong> {(trace.few_shot_examples ?? []).map((item: any) => item.title).join(', ') || 'None'}</div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Database Queries</div>
+            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(trace.db_queries ?? [], null, 2)}</pre>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Context Blocks</div>
+            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(trace.context_blocks ?? {}, null, 2)}</pre>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>AI Calls</div>
+            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(trace.ai_calls ?? [], null, 2)}</pre>
+          </div>
+        </div>
+      </details>
+    );
+  }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -219,7 +260,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
         const resultDraft = data.draft;
         setBaseDraft(resultDraft);
         const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
-        setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis }]);
+        setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis, draftTrace: data.workflow_memory }]);
       } catch (e: any) {
         toast('error', e.response?.data?.detail ?? 'Failed to generate draft');
       } finally {
@@ -256,7 +297,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       const { data } = await submissionsApi.refineDraft(baseDraft, 'regenerate', docType, stakeholder, human_input);
       const resultDraft = data.draft;
       const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
-      setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis }]);
+      setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis, draftTrace: data.workflow_memory }]);
     } catch (e: any) {
       toast('error', e.response?.data?.detail ?? 'Refinement failed');
     } finally {
@@ -275,6 +316,20 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     setStep('draft');
   }
 
+  function updateExistingDraft(value: string) {
+    setDraft(value);
+    if (value !== existingDraftAnalyzedContent) {
+      setExistingDraftAnalysis(null);
+    }
+  }
+
+  function readinessLabel(score: number) {
+    if (score >= 85) return 'Ready to submit';
+    if (score >= 65) return 'Good foundation';
+    if (score >= 40) return 'Needs improvement';
+    return 'High revision needed';
+  }
+
   // Draft generation
   async function generateDraft() {
     if (!docType || !stakeholder) return;
@@ -291,6 +346,39 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       toast('error', e.response?.data?.detail ?? 'Failed to generate draft');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleExistingDraftUpload(file: File) {
+    setUploadedFile(file);
+    setExtractingFile(true);
+    try {
+      const { data } = await submissionsApi.extractFile(file);
+      if (!data.extracted_text?.trim()) {
+        toast('error', 'Could not extract readable text from this file');
+        return;
+      }
+      updateExistingDraft(data.extracted_text);
+      toast('success', `Imported text from ${data.file_name}`);
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not extract text from file');
+    } finally {
+      setExtractingFile(false);
+    }
+  }
+
+  async function runExistingDraftPrecheck() {
+    if (!docType || !stakeholder || !draft.trim()) return;
+    setCheckingReadiness(true);
+    try {
+      const { data } = await submissionsApi.analyzeDraft(docType, stakeholder, draft);
+      setExistingDraftAnalysis(data);
+      setExistingDraftAnalyzedContent(draft);
+      toast('success', `Pre-check complete: ${data.score}/100`);
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not run AI pre-check');
+    } finally {
+      setCheckingReadiness(false);
     }
   }
 
@@ -327,6 +415,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   // Submit for review (create + immediately submit)
   async function submitForReview() {
     if (!docType || !stakeholder || !draft.trim()) return;
+    if (step === 'existing_draft' && (!existingDraftAnalysis || existingDraftAnalyzedContent !== draft)) {
+      toast('info', 'Run AI pre-check on the current draft before submitting to founders');
+      return;
+    }
     setSubmitting(true);
     try {
       const { data: created } = await submissionsApi.create(docType, stakeholder, draft, { fields: contextFields });
@@ -469,7 +561,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     return (
       <Modal title="Compose Method" subtitle="How would you like to create this document?" onClose={onClose} size="full">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 40 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: '100%', maxWidth: 840 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 24, width: '100%', maxWidth: 1240 }}>
             {/* Option 1: Custom Prompt */}
             <div
               className="method-card"
@@ -491,8 +583,156 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Use Guided Form</h3>
               <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Answer a few quick questions (e.g., objective, recipient). We will construct the perfect AI prompt automatically.</p>
             </div>
+
+            <div
+              className="method-card"
+              style={{ padding: 32, border: '1px solid var(--border)', borderRadius: 16, cursor: 'pointer', background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
+              onClick={() => setStep('existing_draft')}
+            >
+              <div style={{ fontSize: 24, marginBottom: 16 }}>📤</div>
+              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Submit Existing Draft</h3>
+              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Paste or upload an existing document, run an AI readiness pre-check, and only then send it to founders for review.</p>
+            </div>
           </div>
           <button className="btn btn-outline" onClick={() => setStep('type')}>← Back to Document Type</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (step === 'existing_draft') {
+    const readinessScore = existingDraftAnalysis?.score ?? null;
+    return (
+      <Modal title="Submit Existing Draft" subtitle="Paste or upload content and run AI pre-check before founder review" onClose={onClose} size="full">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
+            {docType && <DocTypeChip type={docType} />}
+            <span style={{ fontSize: 13, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
+              → {stakeholder}
+            </span>
+          </div>
+
+          <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <label className="form-label">Existing Draft Content</label>
+            <textarea
+              ref={draftRef}
+              className="form-textarea"
+              value={draft}
+              onChange={e => updateExistingDraft(e.target.value)}
+              style={{ flex: 1, minHeight: 360, resize: 'vertical', transition: 'height 0.15s ease', fontSize: 15 }}
+              placeholder="Paste the current draft here, or upload a PDF/DOCX below to extract its text."
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Import From File <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>(optional .pdf / .docx)</span></label>
+            <div className="upload-zone" onClick={() => fileRef.current?.click()}>
+              {uploadedFile ? (
+                <div style={{ fontSize: 13, color: 'var(--green-800)', fontWeight: 500 }}>
+                  📎 {uploadedFile.name}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginLeft: 10 }}
+                    onClick={e => { e.stopPropagation(); setUploadedFile(null); }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+                  {extractingFile ? 'Extracting text…' : 'Click to import a PDF or DOCX'}
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.docx"
+              style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (file) await handleExistingDraftUpload(file);
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <button
+              className="btn btn-primary"
+              disabled={!draft.trim() || checkingReadiness}
+              onClick={runExistingDraftPrecheck}
+            >
+              {checkingReadiness ? <><Spinner /> Running AI pre-check…</> : 'Run AI Pre-check'}
+            </button>
+            <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+              Team members see a readiness score before the draft goes to founders.
+            </div>
+          </div>
+
+          {existingDraftAnalysis && (
+            <div style={{ marginBottom: 20, border: '1px solid var(--border)', borderRadius: 16, background: 'var(--surface)', overflow: 'hidden' }}>
+              <div style={{ padding: '18px 22px', background: 'var(--white)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Readiness Score</div>
+                  <div style={{ fontSize: 15, color: 'var(--ink-soft)' }}>{readinessLabel(existingDraftAnalysis.score)}</div>
+                </div>
+                <div style={{ fontSize: 32, fontWeight: 800, color: existingDraftAnalysis.score >= 80 ? 'var(--green-700)' : existingDraftAnalysis.score >= 60 ? '#f59e0b' : 'var(--red-600)' }}>
+                  {existingDraftAnalysis.score}/100
+                </div>
+              </div>
+              <div style={{ padding: '18px 22px' }}>
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 18 }}>
+                  <div><strong>Tone:</strong> {existingDraftAnalysis.dimensions.tone_voice}/20</div>
+                  <div><strong>Structure:</strong> {existingDraftAnalysis.dimensions.format_structure}/20</div>
+                  <div><strong>Stakeholder Fit:</strong> {existingDraftAnalysis.dimensions.stakeholder_fit}/20</div>
+                  <div><strong>Completeness:</strong> {existingDraftAnalysis.dimensions.missing_elements}/20</div>
+                  <div><strong>Improvement:</strong> {existingDraftAnalysis.dimensions.improvement_scope}/20</div>
+                  <div><strong>Grammar:</strong> {existingDraftAnalysis.grammar_check?.score ?? '—'}/20</div>
+                </div>
+                {existingDraftAnalysis.grammar_check?.notes?.length ? (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check</div>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--ink-soft)' }}>
+                      {existingDraftAnalysis.grammar_check.notes.map((note, idx) => (
+                        <li key={idx} style={{ marginBottom: 8 }}>{note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {existingDraftAnalysis.suggestions.length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Basic AI Suggestions</div>
+                    <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--ink-soft)' }}>
+                      {existingDraftAnalysis.suggestions.slice(0, 4).map((item, idx) => (
+                        <li key={idx} style={{ marginBottom: 8 }}>{item.reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {renderTraceSection('AI Pre-check Trace', existingDraftAnalysis.workflow_memory)}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 'auto' }}>
+            <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Back</button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                className="btn btn-outline"
+                onClick={saveDraft}
+                disabled={submitting || !draft.trim()}
+              >
+                Save as Draft
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={submitForReview}
+                disabled={submitting || !draft.trim() || !existingDraftAnalysis || existingDraftAnalyzedContent !== draft}
+              >
+                {submitting ? <><Spinner /> Submitting…</> : '✓ Submit to Founders'}
+              </button>
+            </div>
+          </div>
         </div>
       </Modal>
     );
@@ -576,6 +816,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                         <button className="btn btn-primary" onClick={() => useDraftFromChat(msg.content)}>
                           Use this Draft →
                         </button>
+                        {renderTraceSection('Draft Generation Trace', msg.draftTrace)}
+                        {renderTraceSection('AI Review Trace', msg.analysis.workflow_memory)}
                       </div>
                     )}
                   </div>

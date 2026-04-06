@@ -32,6 +32,7 @@ from pipeline.workflows import SubmissionWorkflowService
 from schemas.submission import (
     DraftAnalysisRequest,
     DraftAnalysisResponse,
+    DraftWorkflowResponse,
     GenerateDraftRequest,
     RefineDraftRequest,
     ReviewAction,
@@ -57,7 +58,7 @@ class SubmissionService:
 
     # ── Draft generation ──────────────────────────────────────────────────────
 
-    async def generate_draft(self, request: GenerateDraftRequest, actor: User) -> str:
+    async def generate_draft(self, request: GenerateDraftRequest, actor: User) -> DraftWorkflowResponse:
         """Ask AI to generate a full draft; returns raw document text."""
         await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
@@ -68,7 +69,11 @@ class SubmissionService:
                 context_form_data=request.context_form_data.fields,
             )
         )
-        return result.draft
+        return DraftWorkflowResponse(
+            draft=result.draft,
+            workflow_stage=result.workflow_stage,
+            workflow_memory=result.workflow_memory,
+        )
 
     async def analyze_draft(self, request: DraftAnalysisRequest, actor: User) -> DraftAnalysisResponse:
         """Analyze a human-authored draft before it is saved or submitted."""
@@ -84,18 +89,23 @@ class SubmissionService:
         return DraftAnalysisResponse(
             score=result.scorecard.score,
             dimensions=result.scorecard.dimensions,
+            grammar_check=result.scorecard.grammar_check,
             suggestions=result.scorecard.suggestions,
             rewrite=result.scorecard.rewrite,
             workflow_stage=result.workflow_stage,
             workflow_memory=result.workflow_memory,
         )
 
-    async def refine_draft(self, request: RefineDraftRequest, actor: User) -> str:
+    async def refine_draft(self, request: RefineDraftRequest, actor: User) -> DraftWorkflowResponse:
         """Apply a refinement action (shorter, warmer, etc.) to draft text."""
         await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
         result = await self._workflow_service.refine_draft(request)
-        return result.draft
+        return DraftWorkflowResponse(
+            draft=result.draft,
+            workflow_stage=result.workflow_stage,
+            workflow_memory=result.workflow_memory,
+        )
 
     # ── Submission lifecycle ──────────────────────────────────────────────────
 
@@ -325,9 +335,12 @@ class SubmissionService:
         pending = await self._submission_repo.get_pending_for_founders(
             doc_type=doc_type, stakeholder=stakeholder, user_id=user_id
         )
+        approved = await self._submission_repo.get_approved_for_founders(
+            doc_type=doc_type, stakeholder=stakeholder, user_id=user_id
+        )
         recent = await self._submission_repo.get_recent_activity_for_founders()
         counts = await self._submission_repo.count_by_status()
-        return {"counts": counts, "pending": pending, "recent": recent}
+        return {"counts": counts, "pending": pending, "approved": approved, "recent": recent}
 
     async def get_my_submissions(self, actor: User) -> List[Submission]:
         await self._workflow_memory_service.ensure_schema()

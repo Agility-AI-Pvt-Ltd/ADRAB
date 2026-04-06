@@ -11,6 +11,7 @@ from core.exceptions import ForbiddenError
 from models.models import Stakeholder
 from schemas.submission import (
     DraftAnalysisRequest,
+    DraftWorkflowResponse,
     GenerateDraftRequest,
     RefineDraftRequest,
     ReviewAction,
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/submissions", tags=["Submissions"])
 
 # ── AI Draft Generation ───────────────────────────────────────────────────────
 
-@router.post("/generate-draft")
+@router.post("/generate-draft", response_model=DraftWorkflowResponse)
 async def generate_draft(
     body: GenerateDraftRequest,
     current_user: CurrentUser,
@@ -38,11 +39,10 @@ async def generate_draft(
     Returns raw text — not persisted until the team member clicks Submit.
     """
     service = SubmissionService(session)
-    draft_text = await service.generate_draft(body, current_user)
-    return {"draft": draft_text}
+    return await service.generate_draft(body, current_user)
 
 
-@router.post("/refine-draft")
+@router.post("/refine-draft", response_model=DraftWorkflowResponse)
 async def refine_draft(
     body: RefineDraftRequest,
     current_user: CurrentUser,
@@ -53,8 +53,24 @@ async def refine_draft(
     Returns the revised text — not persisted.
     """
     service = SubmissionService(session)
-    refined = await service.refine_draft(body, current_user)
-    return {"draft": refined}
+    return await service.refine_draft(body, current_user)
+
+
+@router.post("/extract-file")
+async def extract_file_for_draft(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = None,
+):
+    """
+    Extract text from a .pdf or .docx before a submission exists so a team member
+    can run an AI readiness pre-check on an existing draft.
+    """
+    file_service = FileService()
+    extracted_text = await file_service.extract_text(file)
+    return {
+        "file_name": file.filename,
+        "extracted_text": extracted_text,
+    }
 
 
 @router.post("/analyze-draft")

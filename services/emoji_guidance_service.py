@@ -126,7 +126,7 @@ class EmojiGuidanceService:
         await self._session.refresh(guidance)
         return guidance
 
-    async def render_guidance_block(self, doc_type: str, stakeholder: Stakeholder) -> str:
+    async def resolve_guidance_rows(self, doc_type: str, stakeholder: Stakeholder) -> List[EmojiGuidance]:
         await self.ensure_seeded()
         keys = ["placement_rules"]
 
@@ -156,6 +156,9 @@ class EmojiGuidanceService:
         rows: List[EmojiGuidance] = []
         for key in keys:
             rows.append(await self.get_guidance(key))
+        return rows
 
+    async def render_guidance_block(self, doc_type: str, stakeholder: Stakeholder) -> str:
+        rows = await self.resolve_guidance_rows(doc_type, stakeholder)
         rendered = "\n\n".join(f"{row.title}\n{row.content}" for row in rows)
         return f"EMOJI USAGE RULES\n{rendered}"

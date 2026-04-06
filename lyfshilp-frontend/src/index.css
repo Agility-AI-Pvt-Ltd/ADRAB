@@ -1510,3 +1510,48 @@ tbody tr:hover { background: var(--green-50); }
   background: var(--green-50) !important;
   transform: translateY(-2px);
 }
+
+/* ── AI Scorecard Panel ─────────────────────────────────────────────────── */
+.ai-scorecard-panel {
+  padding: 24px 30px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+
+.ai-scorecard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.ai-scorecard-breakdown {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--white);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.ai-scorecard-suggestions ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.ai-scorecard-suggestions li {
+  margin-bottom: 8px;
+}
+
+[data-theme="dark"] .ai-scorecard-panel {
+  background: #1a1a1a;
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .ai-scorecard-breakdown {
+  background: #111111;
+  border-color: var(--border);
+}

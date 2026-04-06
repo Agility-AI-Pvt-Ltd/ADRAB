@@ -57,6 +57,33 @@ class SubmissionRepository(BaseRepository[Submission]):
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_approved_for_founders(
+        self,
+        doc_type: Optional[str] = None,
+        stakeholder: Optional[Stakeholder] = None,
+        user_id: Optional[UUID] = None,
+    ) -> List[Submission]:
+        filters = [Submission.status == SubmissionStatus.APPROVED]
+        if doc_type:
+            filters.append(Submission.doc_type == doc_type)
+        if stakeholder:
+            filters.append(Submission.stakeholder == stakeholder)
+        if user_id:
+            filters.append(Submission.user_id == user_id)
+
+        stmt = (
+            select(Submission)
+            .where(and_(*filters))
+            .options(
+                selectinload(Submission.author),
+                selectinload(Submission.visibility),
+                selectinload(Submission.feedback),
+            )
+            .order_by(desc(Submission.reviewed_at))
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_by_user(self, user_id: UUID) -> List[Submission]:
         stmt = (
             select(Submission)

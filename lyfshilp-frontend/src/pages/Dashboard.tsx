@@ -39,6 +39,7 @@ export default function Dashboard() {
   useEffect(() => { load(); }, [docFilter, shFilter]);
 
   const pending = data?.pending ?? [];
+  const approved = data?.approved ?? [];
   const counts = {
     total: data?.counts?.total ?? 0,
     pending: data?.counts?.pending ?? 0,
@@ -241,6 +242,76 @@ export default function Dashboard() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Approved Submissions */}
+      <div className="table-card" style={{ marginTop: 24 }}>
+        <div className="table-header">
+          <span className="table-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green-700, #15803d)', display: 'inline-block' }} />
+            Approved Submissions
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+            {approved.filter(s => !search || s.content.toLowerCase().includes(search.toLowerCase())).length} submission{approved.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '48px', textAlign: 'center' }}><Spinner dark /></div>
+        ) : approved.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">✓</div>
+            <div className="empty-state-title">No approved submissions yet</div>
+            <div className="empty-state-desc">Approved documents will appear here once reviewed.</div>
+          </div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Author</th>
+                <th>Preview</th>
+                <th>Type</th>
+                <th>Stakeholder</th>
+                <th>AI Score</th>
+                <th>Approved</th>
+                <th>Version</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {approved
+                .filter(s => !search || s.content.toLowerCase().includes(search.toLowerCase()))
+                .map(s => (
+                  <tr key={s.id}>
+                    <td>
+                      <div className="user-cell">
+                        <Avatar name={s.author?.name} email={s.author?.email} size="sm" />
+                        <span>{s.author?.name ?? 'Unknown user'}</span>
+                      </div>
+                    </td>
+                    <td style={{ maxWidth: 220 }}>
+                      <TextPreview text={s.content} maxLines={2} containerWidth={200} />
+                    </td>
+                    <td><DocTypeChip type={s.doc_type} /></td>
+                    <td style={{ textTransform: 'capitalize' }}>{s.stakeholder}</td>
+                    <td><ScoreBadge score={s.ai_score} /></td>
+                    <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                      {s.reviewed_at ? fmtDateTime(s.reviewed_at) : '—'}
+                    </td>
+                    <td>v{s.version}</td>
+                    <td>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        onClick={() => openSubmission(s.id)}
+                      >
+                        View →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         )}

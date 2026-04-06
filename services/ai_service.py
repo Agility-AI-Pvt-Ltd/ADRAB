@@ -8,7 +8,7 @@ Wraps the OpenAI API for:
 """
 
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from openai import AsyncOpenAI
 
@@ -16,6 +16,7 @@ from core.config import settings
 from core.exceptions import AIServiceError
 from core.logging import get_logger
 from models.models import Stakeholder
+from pipeline.tracing import append_ai_call
 from schemas.submission import AIScorecardResponse, RefineDraftRequest
 
 logger = get_logger(__name__)
@@ -118,6 +119,7 @@ Score this document across 5 dimensions (20 points each = 100 total):
 5. improvement_scope — How much work is still needed?
 
 Also generate:
+- A grammar check score out of 20 with a few concrete notes on grammar, spelling, punctuation, or sentence clarity
 - Up to 5 specific inline suggestions (original phrase → recommended replacement + reason)
 - A complete rewrite of the document in the Founders' voice
 
@@ -130,6 +132,10 @@ Respond ONLY with valid JSON matching this exact structure:
     "stakeholder_fit": <0-20>,
     "missing_elements": <0-20>,
     "improvement_scope": <0-20>
+  }},
+  "grammar_check": {{
+    "score": <0-20>,
+    "notes": ["...", "..."]
   }},
   "suggestions": [
     {{"original": "...", "replacement": "...", "reason": "..."}}
@@ -202,9 +208,10 @@ Keep it under 100 words. Respond ONLY with the note text.
 class AIService:
     """Wraps OpenAI API calls with structured input/output handling."""
 
-    def __init__(self, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, system_prompt: Optional[str] = None, trace: dict[str, Any] | None = None) -> None:
         self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        self._trace = trace
 
     # ── Public interface ──────────────────────────────────────────────────────
 
@@ -216,7 +223,7 @@ class AIService:
         guidance: str,
     ) -> AIScorecardResponse:
         prompt = PromptBuilder.review(content, doc_type, stakeholder.value, guidance)
-        raw = await self._call(prompt)
+        raw = await self._call(prompt, operation="review_document")
         return self._parse_scorecard(raw)
 
     async def generate_draft(
@@ -227,7 +234,7 @@ class AIService:
         guidance: str,
     ) -> str:
         prompt = PromptBuilder.generate_draft(doc_type, stakeholder.value, context, guidance)
-        return await self._call(prompt)
+        return await self._call(prompt, operation="generate_draft")
 
     async def refine_draft(self, request: RefineDraftRequest, guidance: str) -> str:
         prompt = PromptBuilder.refine_draft(
@@ -237,15 +244,23 @@ class AIService:
             request.stakeholder.value,
             guidance,
         )
-        return await self._call(prompt)
+        return await self._call(prompt, operation="refine_draft")
 
     async def generate_rejection_note(self, scorecard: dict, doc_type: str) -> str:
         prompt = PromptBuilder.rejection_note(scorecard, doc_type)
-        return await self._call(prompt)
+        return await self._call(prompt, operation="generate_rejection_note")
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
-    async def _call(self, user_prompt: str) -> str:
+    async def _call(self, user_prompt: str, *, operation: str) -> str:
+        if self._trace is not None:
+            append_ai_call(
+                self._trace,
+                operation=operation,
+                model=settings.OPENAI_MODEL,
+                system_prompt=self._system_prompt,
+                user_prompt=user_prompt,
+            )
         try:
             response = await self._client.chat.completions.create(
                 model=settings.OPENAI_MODEL,

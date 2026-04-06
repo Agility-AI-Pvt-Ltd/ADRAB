@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type {
   TokenResponse, User, Submission, DashboardData,
-  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse
+  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse, DraftWorkflowResponse
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -62,7 +62,7 @@ export const submissionsApi = {
   documentGuidance: () => client.get<DocumentGuidance[]>('/submissions/document-guidance'),
 
   generateDraft: (doc_type: DocumentType, stakeholder: Stakeholder, fields: Record<string, string>) =>
-    client.post<{ draft: string }>('/submissions/generate-draft', {
+    client.post<DraftWorkflowResponse>('/submissions/generate-draft', {
       doc_type, stakeholder, context_form_data: { fields }
     }),
 
@@ -72,9 +72,15 @@ export const submissionsApi = {
     }),
 
   refineDraft: (content: string, action: string, doc_type: DocumentType, stakeholder: Stakeholder, human_input?: string) =>
-    client.post<{ draft: string }>('/submissions/refine-draft', {
+    client.post<DraftWorkflowResponse>('/submissions/refine-draft', {
       content, action, doc_type, stakeholder, human_input
     }),
+
+  extractFile: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return client.post<{ file_name: string; extracted_text: string | null }>('/submissions/extract-file', fd);
+  },
 
   create: (doc_type: DocumentType, stakeholder: Stakeholder, content: string, context_form_data?: object) =>
     client.post<Submission>('/submissions/', { doc_type, stakeholder, content, context_form_data }),

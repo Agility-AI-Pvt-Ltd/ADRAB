@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.models import Stakeholder
+from pipeline.tracing import append_db_query, set_context_block
 from services.ai_review_guidance_service import AIReviewGuidanceService
 from services.ai_service import AIService
 from services.document_guidance_service import DocumentGuidanceService
@@ -23,6 +25,7 @@ class PromptContextBundle:
     deterministic_context: str
     enrichment_context: str = ""
     review_context: str = ""
+    trace: dict[str, Any] | None = None
 
     @property
     def prompt_context(self) -> str:
@@ -55,44 +58,121 @@ class SubmissionPromptContextService:
             ai_review_guidance_service=self._ai_review_guidance_service,
         )
 
-    async def build_ai_service(self, stakeholder: Stakeholder | None = None) -> AIService:
-        prompt_text = await self._prompt_service.get_active_prompt_text()
-        knowledge_block = await self._knowledge_snippet_service.render_prompt_block()
+    async def build_ai_service(
+        self,
+        stakeholder: Stakeholder | None = None,
+        *,
+        trace: dict[str, Any] | None = None,
+    ) -> AIService:
+        prompt = await self._prompt_service.ensure_seeded()
+        prompt_text = prompt.prompt_text
+        knowledge_snippets = await self._knowledge_snippet_service.list_active()
+        knowledge_block = ""
+        if knowledge_snippets:
+            lines = ["ADDITIONAL KNOWLEDGE CONTEXT"]
+            for snippet in knowledge_snippets:
+                lines.append(f"- {snippet.title}:")
+                lines.append(snippet.content)
+                lines.append("")
+            knowledge_block = "\n".join(lines).strip()
         if knowledge_block:
             prompt_text = f"{prompt_text}\n\n{knowledge_block}"
+
+        stakeholder_block = ""
         if stakeholder is not None:
-            stakeholder_block = await self._stakeholder_guidance_service.render_guidance_block(
-                stakeholder
+            guidance = await self._stakeholder_guidance_service.get_guidance(stakeholder)
+            stakeholder_block = (
+                "STAKEHOLDER-SPECIFIC TONE RULES\n"
+                f"- Stakeholder: {guidance.title}\n"
+                f"- Guidance: {guidance.guidance_text}"
             )
             prompt_text = f"{prompt_text}\n\n{stakeholder_block}"
-        return AIService(system_prompt=prompt_text)
+
+        if trace is not None:
+            append_db_query(
+                trace,
+                service="SystemPromptService",
+                query="ensure_seeded/get_active_prompt",
+                filters={"is_active": True},
+                result={"id": str(prompt.id), "label": prompt.label},
+            )
+            set_context_block(
+                trace,
+                "system_prompt",
+                prompt.prompt_text,
+                metadata={"label": prompt.label},
+            )
+
+            append_db_query(
+                trace,
+                service="KnowledgeSnippetService",
+                query="list_active",
+                filters={"is_active": True},
+                result={"count": len(knowledge_snippets)},
+            )
+            set_context_block(
+                trace,
+                "knowledge_snippets",
+                knowledge_block,
+                metadata={
+                    "count": len(knowledge_snippets),
+                    "titles": [snippet.title for snippet in knowledge_snippets],
+                },
+            )
+
+            if stakeholder is not None:
+                append_db_query(
+                    trace,
+                    service="StakeholderGuidanceService",
+                    query="get_guidance",
+                    filters={"stakeholder": stakeholder.value},
+                    result={"title": guidance.title},
+                )
+                set_context_block(
+                    trace,
+                    "stakeholder_guidance",
+                    stakeholder_block,
+                    metadata={"stakeholder": stakeholder.value, "title": guidance.title},
+                )
+
+            set_context_block(trace, "assembled_system_prompt", prompt_text)
+
+        return AIService(system_prompt=prompt_text, trace=trace)
 
     async def build_generation_context(
         self,
         doc_type: str,
         stakeholder: Stakeholder,
+        *,
+        trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
         retrieved = await self._context_retriever.retrieve(
             doc_type,
             stakeholder,
+            trace=trace,
         )
         return PromptContextBundle(
             deterministic_context=retrieved.deterministic_context,
             enrichment_context=retrieved.enrichment_context,
+            trace=retrieved.trace,
         )
 
     async def build_review_context(
         self,
         doc_type: str,
         stakeholder: Stakeholder,
+        *,
+        trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
         retrieved = await self._context_retriever.retrieve(
             doc_type,
             stakeholder,
             include_review_guidance=True,
+            trace=trace,
         )
         return PromptContextBundle(
             deterministic_context=retrieved.deterministic_context,
             enrichment_context=retrieved.enrichment_context,
             review_context=retrieved.review_context,
+            trace=retrieved.trace,
         )

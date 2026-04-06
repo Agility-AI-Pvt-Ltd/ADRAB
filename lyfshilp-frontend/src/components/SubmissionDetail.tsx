@@ -599,15 +599,15 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           {submission.ai_scorecard && (
             <div style={{ marginTop: 28, marginBottom: 16 }}>
               <div className="detail-section-title">AI Scorecard (Pre-Evaluation)</div>
-              <div style={{ padding: '24px 30px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div className="ai-scorecard-panel">
+                <div className="ai-scorecard-header">
                   <span style={{ fontWeight: 600, fontSize: 14 }}>Platform AI Analysis</span>
                   <span style={{ fontWeight: 800, fontSize: 18, color: (submission.ai_scorecard.score ?? 0) >= 80 ? 'var(--green-700)' : (submission.ai_scorecard.score ?? 0) >= 60 ? '#f59e0b' : 'var(--red-600)' }}>
                     {submission.ai_scorecard.score ?? 0} / 100
                   </span>
                 </div>
-                {submission.ai_scorecard.dimensions && (
-                  <div style={{ marginBottom: 24, padding: 16, background: 'var(--white)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                 {submission.ai_scorecard.dimensions && (
+                  <div className="ai-scorecard-breakdown">
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score Breakdown (out of 20)</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
                       <div>
@@ -633,12 +633,34 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
                     </div>
                   </div>
                 )}
+                {submission.ai_scorecard.grammar_check && (
+                  <div className="ai-scorecard-breakdown" style={{ marginTop: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check</div>
+                      <span style={{
+                        fontWeight: 700, fontSize: 13,
+                        color: (submission.ai_scorecard.grammar_check.score ?? 0) >= 80 ? 'var(--green-700)' : (submission.ai_scorecard.grammar_check.score ?? 0) >= 60 ? '#f59e0b' : 'var(--red-600)',
+                        background: (submission.ai_scorecard.grammar_check.score ?? 0) >= 80 ? 'var(--success-bg)' : (submission.ai_scorecard.grammar_check.score ?? 0) >= 60 ? 'var(--warn-bg)' : 'var(--danger-bg)',
+                        padding: '2px 10px', borderRadius: 20,
+                      }}>
+                        {submission.ai_scorecard.grammar_check.score ?? 0} / 100
+                      </span>
+                    </div>
+                    {(submission.ai_scorecard.grammar_check.notes?.length || 0) > 0 && (
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--ink-soft)' }}>
+                        {submission.ai_scorecard.grammar_check.notes.map((note: string, idx: number) => (
+                          <li key={idx} style={{ marginBottom: 4 }}>{note}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 {(submission.ai_scorecard.suggestions?.length || 0) > 0 && (
-                  <div>
+                  <div className="ai-scorecard-suggestions">
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Suggestions Encountered</div>
-                    <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--ink-soft)' }}>
+                    <ul>
                       {submission.ai_scorecard.suggestions?.slice(0, 5).map((s: any, idx: number) => (
-                        <li key={idx} style={{ marginBottom: 8 }}>{s.reason}</li>
+                        <li key={idx}>{s.reason}</li>
                       ))}
                     </ul>
                   </div>

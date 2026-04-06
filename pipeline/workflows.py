@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 from langgraph.graph import END, START, StateGraph
 
+from core.logging import get_logger
 from models.models import WorkflowStage
 from pipeline.context import SubmissionPromptContextService
+from pipeline.tracing import append_node, create_workflow_trace, set_context_block
 from pipeline.types import (
     DraftGenerationInput,
     DraftGenerationResult,
@@ -19,6 +23,8 @@ from pipeline.types import (
 )
 from schemas.submission import RefineDraftRequest
 
+logger = get_logger(__name__)
+
 
 class SubmissionWorkflowService:
     """Run the PDF-inspired drafting and review flow via LangGraph."""
@@ -31,13 +37,23 @@ class SubmissionWorkflowService:
         self._rejection_note_graph = self._build_rejection_note_graph()
 
     async def generate_draft(self, request: DraftGenerationInput) -> DraftGenerationResult:
+        trace = create_workflow_trace(
+            "draft_generation",
+            inputs={
+                "doc_type": request.doc_type,
+                "stakeholder": request.stakeholder.value,
+                "context_form_data": request.context_form_data,
+            },
+        )
         state = await self._draft_graph.ainvoke(
             {
                 "doc_type": request.doc_type,
                 "stakeholder": request.stakeholder,
                 "context_form_data": request.context_form_data,
+                "workflow_trace": trace,
             }
         )
+        self._log_trace(state["workflow_memory"])
         return DraftGenerationResult(
             draft=state["draft"],
             prompt_context=state["prompt_context"],
@@ -46,13 +62,23 @@ class SubmissionWorkflowService:
         )
 
     async def review_draft(self, request: DraftReviewInput) -> DraftReviewResult:
+        trace = create_workflow_trace(
+            "draft_review",
+            inputs={
+                "doc_type": request.doc_type,
+                "stakeholder": request.stakeholder.value,
+                "content_preview": request.content[:500],
+            },
+        )
         state = await self._review_graph.ainvoke(
             {
                 "doc_type": request.doc_type,
                 "stakeholder": request.stakeholder,
                 "content": request.content,
+                "workflow_trace": trace,
             }
         )
+        self._log_trace(state["workflow_memory"])
         return DraftReviewResult(
             scorecard=state["scorecard"],
             prompt_context=state["prompt_context"],
@@ -61,7 +87,18 @@ class SubmissionWorkflowService:
         )
 
     async def refine_draft(self, request: RefineDraftRequest) -> DraftRefinementResult:
-        state = await self._refinement_graph.ainvoke({"request": request})
+        trace = create_workflow_trace(
+            "draft_refinement",
+            inputs={
+                "doc_type": request.doc_type,
+                "stakeholder": request.stakeholder.value,
+                "action": request.action,
+                "content_preview": request.content[:500],
+                "human_input": request.human_input,
+            },
+        )
+        state = await self._refinement_graph.ainvoke({"request": request, "workflow_trace": trace})
+        self._log_trace(state["workflow_memory"])
         return DraftRefinementResult(
             draft=state["refined_draft"],
             prompt_context=state["prompt_context"],
@@ -70,10 +107,15 @@ class SubmissionWorkflowService:
         )
 
     async def generate_rejection_note(self, scorecard: dict, doc_type: str) -> str:
+        trace = create_workflow_trace(
+            "rejection_note",
+            inputs={"doc_type": doc_type, "scorecard": scorecard},
+        )
         state = await self._rejection_note_graph.ainvoke(
             {
                 "scorecard": scorecard,
                 "doc_type": doc_type,
+                "workflow_trace": trace,
             }
         )
         return state["rejection_note"]
@@ -127,19 +169,25 @@ class SubmissionWorkflowService:
     async def _load_generation_context(
         self, state: DraftGenerationState
     ) -> DraftGenerationState:
+        trace = state["workflow_trace"]
+        append_node(trace, "load_deterministic_context", graph="draft_generation")
         context = await self._context_service.build_generation_context(
             state["doc_type"],
             state["stakeholder"],
+            trace=trace,
         )
-        ai_service = await self._context_service.build_ai_service(state["stakeholder"])
+        ai_service = await self._context_service.build_ai_service(state["stakeholder"], trace=trace)
+        set_context_block(trace, "graph_prompt_context", context.prompt_context)
         return {
             "ai_service": ai_service,
             "deterministic_context": context.deterministic_context,
             "enrichment_context": context.enrichment_context,
             "prompt_context": context.prompt_context,
+            "workflow_trace": trace,
             "workflow_stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY,
             "workflow_memory": {
                 "deterministic_context": context.deterministic_context,
+                "trace": trace,
                 "events": [
                     {
                         "stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY.value,
@@ -152,6 +200,7 @@ class SubmissionWorkflowService:
     async def _mark_generation_context_enriched(
         self, state: DraftGenerationState
     ) -> DraftGenerationState:
+        append_node(state["workflow_trace"], "context_enriching", graph="draft_generation")
         memory = dict(state["workflow_memory"])
         events = list(memory.get("events") or [])
         events.append(
@@ -171,6 +220,7 @@ class SubmissionWorkflowService:
     async def _generate_draft_node(
         self, state: DraftGenerationState
     ) -> DraftGenerationState:
+        append_node(state["workflow_trace"], "generate_draft", graph="draft_generation")
         draft = await state["ai_service"].generate_draft(
             doc_type=state["doc_type"],
             stakeholder=state["stakeholder"],
@@ -193,20 +243,26 @@ class SubmissionWorkflowService:
         }
 
     async def _load_review_context(self, state: DraftReviewState) -> DraftReviewState:
+        trace = state["workflow_trace"]
+        append_node(trace, "load_deterministic_context", graph="draft_review")
         context = await self._context_service.build_review_context(
             state["doc_type"],
             state["stakeholder"],
+            trace=trace,
         )
-        ai_service = await self._context_service.build_ai_service(state["stakeholder"])
+        ai_service = await self._context_service.build_ai_service(state["stakeholder"], trace=trace)
+        set_context_block(trace, "graph_prompt_context", context.prompt_context)
         return {
             "ai_service": ai_service,
             "deterministic_context": context.deterministic_context,
             "enrichment_context": context.enrichment_context,
             "review_context": context.review_context,
             "prompt_context": context.prompt_context,
+            "workflow_trace": trace,
             "workflow_stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY,
             "workflow_memory": {
                 "deterministic_context": context.deterministic_context,
+                "trace": trace,
                 "events": [
                     {
                         "stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY.value,
@@ -219,6 +275,7 @@ class SubmissionWorkflowService:
     async def _mark_review_context_enriched(
         self, state: DraftReviewState
     ) -> DraftReviewState:
+        append_node(state["workflow_trace"], "context_enriching", graph="draft_review")
         memory = dict(state["workflow_memory"])
         events = list(memory.get("events") or [])
         events.append(
@@ -238,6 +295,7 @@ class SubmissionWorkflowService:
         }
 
     async def _score_submission(self, state: DraftReviewState) -> DraftReviewState:
+        append_node(state["workflow_trace"], "score_submission", graph="draft_review")
         scorecard = await state["ai_service"].review_document(
             content=state["content"],
             doc_type=state["doc_type"],
@@ -263,6 +321,7 @@ class SubmissionWorkflowService:
     async def _prepare_human_review_packet(
         self, state: DraftReviewState
     ) -> DraftReviewState:
+        append_node(state["workflow_trace"], "prepare_human_review_packet", graph="draft_review")
         memory = dict(state["workflow_memory"])
         memory["score"] = state["scorecard"].score
         memory["suggestions"] = [item.model_dump() for item in state["scorecard"].suggestions]
@@ -284,19 +343,25 @@ class SubmissionWorkflowService:
         self, state: DraftRefinementState
     ) -> DraftRefinementState:
         request = state["request"]
+        trace = state["workflow_trace"]
+        append_node(trace, "load_deterministic_context", graph="draft_refinement")
         context = await self._context_service.build_generation_context(
             request.doc_type,
             request.stakeholder,
+            trace=trace,
         )
-        ai_service = await self._context_service.build_ai_service(request.stakeholder)
+        ai_service = await self._context_service.build_ai_service(request.stakeholder, trace=trace)
+        set_context_block(trace, "graph_prompt_context", context.prompt_context)
         return {
             "ai_service": ai_service,
             "deterministic_context": context.deterministic_context,
             "enrichment_context": context.enrichment_context,
             "prompt_context": context.prompt_context,
+            "workflow_trace": trace,
             "workflow_stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY,
             "workflow_memory": {
                 "deterministic_context": context.deterministic_context,
+                "trace": trace,
                 "events": [
                     {
                         "stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY.value,
@@ -309,6 +374,7 @@ class SubmissionWorkflowService:
     async def _mark_refinement_context_enriched(
         self, state: DraftRefinementState
     ) -> DraftRefinementState:
+        append_node(state["workflow_trace"], "context_enriching", graph="draft_refinement")
         memory = dict(state["workflow_memory"])
         events = list(memory.get("events") or [])
         events.append(
@@ -329,6 +395,7 @@ class SubmissionWorkflowService:
         self, state: DraftRefinementState
     ) -> DraftRefinementState:
         request = state["request"]
+        append_node(state["workflow_trace"], "prepare_regeneration", graph="draft_refinement")
         regenerated_prompt = (
             "HUMAN IMPROVEMENT INSTRUCTION\n"
             f"- Action: {request.action}\n"
@@ -344,6 +411,7 @@ class SubmissionWorkflowService:
             )
             regenerated_prompt = f"{regenerated_prompt}\n- Suggestions to use:\n{suggestion_lines}"
         memory = dict(state["workflow_memory"])
+        set_context_block(state["workflow_trace"], "regenerated_prompt", regenerated_prompt)
         events = list(memory.get("events") or [])
         events.append(
             {
@@ -361,6 +429,7 @@ class SubmissionWorkflowService:
         }
 
     async def _regenerate_draft(self, state: DraftRefinementState) -> DraftRefinementState:
+        append_node(state["workflow_trace"], "regenerate_draft", graph="draft_refinement")
         request = RefineDraftRequest(
             content=state["request"].content,
             action=state["request"].action,
@@ -390,13 +459,33 @@ class SubmissionWorkflowService:
     async def _load_rejection_note_ai_service(
         self, state: RejectionNoteState
     ) -> RejectionNoteState:
-        return {"ai_service": await self._context_service.build_ai_service()}
+        trace = state["workflow_trace"]
+        append_node(trace, "load_ai_service", graph="rejection_note")
+        return {
+            "ai_service": await self._context_service.build_ai_service(trace=trace),
+            "workflow_trace": trace,
+        }
 
     async def _generate_rejection_note_node(
         self, state: RejectionNoteState
     ) -> RejectionNoteState:
+        append_node(state["workflow_trace"], "generate_note", graph="rejection_note")
         rejection_note = await state["ai_service"].generate_rejection_note(
             state["scorecard"],
             state["doc_type"],
         )
         return {"rejection_note": rejection_note}
+
+    def _log_trace(self, workflow_memory: dict[str, object]) -> None:
+        trace = workflow_memory.get("trace")
+        if not isinstance(trace, dict):
+            return
+        summary = {
+            "trace_id": trace.get("trace_id"),
+            "graph_name": trace.get("graph_name"),
+            "nodes": [item.get("node") for item in trace.get("nodes_executed", [])],
+            "db_queries": len(trace.get("db_queries", [])),
+            "few_shot_examples": [item.get("title") for item in trace.get("few_shot_examples", [])],
+            "ai_calls": [item.get("operation") for item in trace.get("ai_calls", [])],
+        }
+        logger.info("Workflow trace | %s", json.dumps(summary, ensure_ascii=True))

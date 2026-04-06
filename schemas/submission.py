@@ -27,9 +27,15 @@ class AISuggestion(BaseModel):
     reason: str
 
 
+class GrammarCheckResponse(BaseModel):
+    score: int = Field(ge=0, le=20)
+    notes: List[str] = []
+
+
 class AIScorecardResponse(BaseModel):
     score: int = Field(ge=0, le=100)
     dimensions: ScoreBreakdown
+    grammar_check: GrammarCheckResponse | None = None
     suggestions: List[AISuggestion]
     rewrite: str
 
@@ -57,6 +63,12 @@ class GenerateDraftRequest(BaseModel):
     context_form_data: ContextFormData
 
 
+class DraftWorkflowResponse(BaseModel):
+    draft: str
+    workflow_stage: WorkflowStage
+    workflow_memory: Dict[str, Any]
+
+
 class RefineDraftRequest(BaseModel):
     content: str
     action: str = Field(description="shorter | more_formal | warmer | add_urgency | regenerate")
@@ -76,6 +88,7 @@ class DraftAnalysisRequest(BaseModel):
 class DraftAnalysisResponse(BaseModel):
     score: int = Field(ge=0, le=100)
     dimensions: ScoreBreakdown
+    grammar_check: GrammarCheckResponse | None = None
     suggestions: List[AISuggestion]
     rewrite: str
     workflow_stage: WorkflowStage

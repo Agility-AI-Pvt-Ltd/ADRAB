@@ -57,6 +57,7 @@ class DraftGenerationState(TypedDict, total=False):
     enrichment_context: str
     prompt_context: str
     draft: str
+    workflow_trace: dict[str, Any]
     workflow_stage: WorkflowStage
     workflow_memory: dict[str, Any]
 
@@ -70,6 +71,7 @@ class DraftReviewState(TypedDict, total=False):
     review_context: str
     prompt_context: str
     scorecard: AIScorecardResponse
+    workflow_trace: dict[str, Any]
     workflow_stage: WorkflowStage
     workflow_memory: dict[str, Any]
 
@@ -82,6 +84,7 @@ class DraftRefinementState(TypedDict, total=False):
     prompt_context: str
     regenerated_prompt: str
     refined_draft: str
+    workflow_trace: dict[str, Any]
     workflow_stage: WorkflowStage
     workflow_memory: dict[str, Any]
 
@@ -91,3 +94,4 @@ class RejectionNoteState(TypedDict, total=False):
     scorecard: dict[str, Any]
     ai_service: AIService
     rejection_note: str
+    workflow_trace: dict[str, Any]
