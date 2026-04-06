@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     DEBUG: bool = Field(default=False, validation_alias="APP_DEBUG")
     AUTO_INIT_DB: bool = True
     API_V1_PREFIX: str = "/api/v1"
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: str  # Required — set in .env. Example: "https://adrab.vercel.app"
 
     # ── Auth & Security ───────────────────────────────────────────────────────
     SECRET_KEY: str                          # used to sign JWTs
@@ -36,12 +36,15 @@ class Settings(BaseSettings):
     # Domain whitelist — only @agilityai.in emails may log in
     ALLOWED_EMAIL_DOMAIN: str = "agilityai.in"
     ALLOWED_EMAIL_EXCEPTIONS: str = ""
+    FIRST_FOUNDER_NAME: str = "Sharad"
+    FIRST_FOUNDER_EMAIL: str = "sharad@agilityai.in"
+    FIRST_FOUNDER_PASSWORD: str = "password"
 
     # ── Google OAuth ──────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
-    FRONTEND_URL: str = "http://localhost:3000"
+    GOOGLE_REDIRECT_URI: str  # Required — set in .env e.g. https://adrab.vercel.app/auth/google/callback
+    FRONTEND_URL: str  # Required — set in .env e.g. https://adrab.vercel.app
 
     # ── PostgreSQL (with async + pooling) ─────────────────────────────────────
     POSTGRES_HOST: str = "localhost"

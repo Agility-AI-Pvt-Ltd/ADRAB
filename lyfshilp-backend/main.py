@@ -21,9 +21,36 @@ from services.emoji_guidance_service import EmojiGuidanceService
 from services.few_shot_example_service import FewShotExampleService
 from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.system_prompt_service import SystemPromptService
+from scripts.seed_ai_review_guidance import seed_ai_review_guidance
+from scripts.seed_document_guidance import seed_document_guidance
+from scripts.seed_emoji_guidance import seed_emoji_guidance
+from scripts.seed_few_shot_examples import seed_few_shot_examples
+from scripts.seed_first_founder import seed_first_founder
+from scripts.seed_stakeholder_guidance import seed_stakeholder_guidance
+from scripts.seed_system_prompt import seed_system_prompt
 from utils.exception_handlers import register_exception_handlers
 
 logger = get_logger(__name__)
+
+
+async def run_startup_seed_scripts() -> None:
+    """
+    Run the repo's reusable seed scripts on app startup.
+    These functions are idempotent in normal mode and mirror the manual scripts.
+    """
+    seed_tasks = [
+        ("seed_first_founder", seed_first_founder),
+        ("seed_system_prompt", seed_system_prompt),
+        ("seed_stakeholder_guidance", seed_stakeholder_guidance),
+        ("seed_ai_review_guidance", seed_ai_review_guidance),
+        ("seed_emoji_guidance", seed_emoji_guidance),
+        ("seed_document_guidance", seed_document_guidance),
+        ("seed_few_shot_examples", seed_few_shot_examples),
+    ]
+
+    for label, task in seed_tasks:
+        logger.info("Running startup seed script: %s", label)
+        await task(overwrite=False)
 
 
 @asynccontextmanager
@@ -42,6 +69,7 @@ async def lifespan(app: FastAPI):
             await FewShotExampleService(session).ensure_seeded()
             await StakeholderGuidanceService(session).ensure_seeded()
             await SystemPromptService(session).ensure_seeded()
+        await run_startup_seed_scripts()
 
     yield
 
