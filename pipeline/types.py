@@ -92,6 +92,8 @@ class DraftRefinementState(TypedDict, total=False):
 class RejectionNoteState(TypedDict, total=False):
     doc_type: str
     scorecard: dict[str, Any]
+    member_name: str
+    founder_name: str
     ai_service: AIService
     rejection_note: str
     workflow_trace: dict[str, Any]

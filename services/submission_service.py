@@ -113,19 +113,28 @@ class SubmissionService:
         """Save a new submission as DRAFT (no AI check yet)."""
         await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
+        workflow_memory = (
+            data.precheck_workflow_memory
+            if data.precheck_workflow_memory is not None
+            else self._workflow_memory_service.initial_memory(
+                doc_type=data.doc_type,
+                stakeholder=data.stakeholder.value,
+                context_form_data=data.context_form_data.model_dump() if data.context_form_data else None,
+            )
+        )
         submission = Submission(
             user_id=actor.id,
             doc_type=data.doc_type,
             stakeholder=data.stakeholder,
             content=data.content,
             context_form_data=data.context_form_data.model_dump() if data.context_form_data else None,
+            ai_score=data.ai_precheck.score if data.ai_precheck else None,
+            ai_scorecard=data.ai_precheck.model_dump() if data.ai_precheck else None,
+            ai_suggestions=[item.model_dump() for item in data.ai_precheck.suggestions] if data.ai_precheck else None,
+            ai_rewrite=data.ai_precheck.rewrite if data.ai_precheck else None,
             status=SubmissionStatus.DRAFT,
             workflow_stage=WorkflowStage.DRAFT_CREATED,
-            workflow_memory=self._workflow_memory_service.initial_memory(
-                doc_type=data.doc_type,
-                stakeholder=data.stakeholder.value,
-                context_form_data=data.context_form_data.model_dump() if data.context_form_data else None,
-            ),
+            workflow_memory=workflow_memory,
             version=1,
         )
         submission = await self._submission_repo.create(submission)
@@ -141,25 +150,30 @@ class SubmissionService:
         if submission.status not in (SubmissionStatus.DRAFT, SubmissionStatus.REJECTED):
             raise ValidationError("Only draft or rejected submissions can be (re)submitted.")
 
-        review_result = await self._workflow_service.review_draft(
-            DraftReviewInput(
-                content=submission.content,
-                doc_type=submission.doc_type,
-                stakeholder=submission.stakeholder,
+        if self._has_persisted_precheck(submission):
+            scorecard = submission.ai_scorecard
+            workflow_memory = submission.workflow_memory
+        else:
+            review_result = await self._workflow_service.review_draft(
+                DraftReviewInput(
+                    content=submission.content,
+                    doc_type=submission.doc_type,
+                    stakeholder=submission.stakeholder,
+                )
             )
-        )
-        scorecard = review_result.scorecard
+            scorecard = review_result.scorecard.model_dump()
+            workflow_memory = review_result.workflow_memory
 
         await self._submission_repo.update(
             submission,
-            ai_score=scorecard.score,
-            ai_scorecard=scorecard.model_dump(),
-            ai_suggestions=[s.model_dump() for s in scorecard.suggestions],
-            ai_rewrite=scorecard.rewrite,
+            ai_score=scorecard["score"],
+            ai_scorecard=scorecard,
+            ai_suggestions=scorecard["suggestions"],
+            ai_rewrite=scorecard["rewrite"],
             status=SubmissionStatus.PENDING,
             workflow_stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
             workflow_memory=self._workflow_memory_service.append_event(
-                review_result.workflow_memory,
+                workflow_memory,
                 stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
                 payload={"label": "Submission sent to founder review"},
             ),
@@ -242,6 +256,8 @@ class SubmissionService:
             ai_note = await self._workflow_service.generate_rejection_note(
                 submission.ai_scorecard,
                 submission.doc_type,
+                submission.author.name if submission.author else "Team Member",
+                founder.name,
             )
 
         await self._submission_repo.update(
@@ -318,8 +334,7 @@ class SubmissionService:
         )
         new_version = await self._submission_repo.create(new_version)
         await self._log(actor, "submission.resubmit", "submission", str(new_version.id))
-        refreshed = await self._submission_repo.get_with_relations(new_version.id)
-        return refreshed or new_version
+        return await self.submit_for_review(new_version.id, actor)
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -448,4 +463,13 @@ class SubmissionService:
                 ADD COLUMN IF NOT EXISTS visible_to_departments VARCHAR(255)[]
                 """
             )
+        )
+
+    @staticmethod
+    def _has_persisted_precheck(submission: Submission) -> bool:
+        return bool(
+            submission.ai_score is not None
+            and isinstance(submission.ai_scorecard, dict)
+            and submission.ai_suggestions is not None
+            and submission.ai_rewrite
         )

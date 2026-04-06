@@ -54,6 +54,8 @@ class SubmissionCreate(BaseModel):
     stakeholder: Stakeholder
     content: str = Field(min_length=10)
     context_form_data: Optional[ContextFormData] = None
+    ai_precheck: Optional[AIScorecardResponse] = None
+    precheck_workflow_memory: Optional[Dict[str, Any]] = None
 
 
 class GenerateDraftRequest(BaseModel):
@@ -103,6 +105,21 @@ class VisibilityResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SubmissionAuthorResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+
+    model_config = {"from_attributes": True}
+
+
+class FeedbackResponse(BaseModel):
+    founder_note: Optional[str] = None
+    ai_generated_note: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class SubmissionResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -123,6 +140,8 @@ class SubmissionResponse(BaseModel):
     submitted_at: Optional[datetime]
     reviewed_at: Optional[datetime]
     created_at: datetime
+    author: Optional[SubmissionAuthorResponse] = None
+    feedback: Optional[FeedbackResponse] = None
     visibility: Optional[VisibilityResponse] = None
 
     model_config = {"from_attributes": True}

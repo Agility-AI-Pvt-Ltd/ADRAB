@@ -576,7 +576,9 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
             <div style={{ marginTop: 12 }}>
               <div className="detail-section-title">AI Rejection Note</div>
               <div className="founder-note-box" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', borderColor: '#f0b0a8' }}>
-                {submission.feedback.ai_generated_note}
+                {submission.feedback.ai_generated_note
+                  .replace(/\[Team Member['’]s Name\]/gi, submission.author?.name || 'Team Member')
+                  .replace(/\[Your Name\]/gi, user?.name || 'Founder')}
               </div>
             </div>
           )}
@@ -639,11 +641,11 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check</div>
                       <span style={{
                         fontWeight: 700, fontSize: 13,
-                        color: (submission.ai_scorecard.grammar_check.score ?? 0) >= 80 ? 'var(--green-700)' : (submission.ai_scorecard.grammar_check.score ?? 0) >= 60 ? '#f59e0b' : 'var(--red-600)',
-                        background: (submission.ai_scorecard.grammar_check.score ?? 0) >= 80 ? 'var(--success-bg)' : (submission.ai_scorecard.grammar_check.score ?? 0) >= 60 ? 'var(--warn-bg)' : 'var(--danger-bg)',
+                        color: (submission.ai_scorecard.grammar_check.score ?? 0) >= 16 ? 'var(--green-700)' : (submission.ai_scorecard.grammar_check.score ?? 0) >= 12 ? '#f59e0b' : 'var(--red-600)',
+                        background: (submission.ai_scorecard.grammar_check.score ?? 0) >= 16 ? 'var(--success-bg)' : (submission.ai_scorecard.grammar_check.score ?? 0) >= 12 ? 'var(--warn-bg)' : 'var(--danger-bg)',
                         padding: '2px 10px', borderRadius: 20,
                       }}>
-                        {submission.ai_scorecard.grammar_check.score ?? 0} / 100
+                        {submission.ai_scorecard.grammar_check.score ?? 0} / 20
                       </span>
                     </div>
                     {(submission.ai_scorecard.grammar_check.notes?.length || 0) > 0 && (

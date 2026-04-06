@@ -16,12 +16,14 @@
   --ink-soft:  #8E8E8E;
   --border:    #EBEBEB;
   --white:     #FFFFFF;
+  --surface:   #FFFFFF;
   --danger:    #FF4B6E;
   --danger-bg: #FFF0F3;
   --warn:      #F5A623;
   --warn-bg:   #FFF9EB;
   --success:   #00C48C;
   --success-bg:#E0F8EE;
+  --shadow-soft: 0 2px 12px rgba(0,0,0,0.06);
 }
 
 /* ── DARK MODE TOKENS ──────────────────────────────────────────────────────── */
@@ -49,12 +51,6 @@
   --success:   #00C48C;
   --success-bg:#081a12;
   --shadow-soft: 0 2px 16px rgba(0,0,0,0.5);
-}
-
-/* ── LIGHT MODE EXTRAS (missing from original :root) ── */
-:root {
-  --surface: #ffffff;
-  --shadow-soft: 0 2px 12px rgba(0,0,0,0.06);
 }
 
 [data-theme="dark"] body { background: var(--cream); color: var(--ink); }
@@ -717,6 +713,63 @@ body {
 .btn-success { background: var(--green-900); color: white; }
 .btn-gold { background: var(--gold); color: var(--green-950); }
 .btn-gold:hover:not(:disabled) { background: #b8962e; }
+
+[data-theme="dark"] .dept-pill {
+  background: #151515;
+  color: var(--ink);
+  border-color: var(--border);
+}
+[data-theme="dark"] .dept-pill:hover {
+  border-color: var(--green-700);
+}
+[data-theme="dark"] .dept-pill.active {
+  background: var(--green-700);
+  color: #ffffff;
+  border-color: var(--green-700);
+  box-shadow: 0 8px 20px rgba(255, 107, 138, 0.2);
+}
+
+[data-theme="dark"] .member-card {
+  background: #151515;
+  border-color: var(--border);
+}
+[data-theme="dark"] .member-card:hover {
+  border-color: var(--green-700);
+}
+[data-theme="dark"] .member-card.active {
+  background: #24161b;
+  border-color: var(--green-700);
+}
+[data-theme="dark"] .member-card-check {
+  border-color: #4a4a4a;
+}
+[data-theme="dark"] .member-card.active .member-card-check {
+  background: var(--green-700);
+  border-color: var(--green-700);
+}
+[data-theme="dark"] .member-card.active .user-name {
+  color: var(--ink);
+}
+
+[data-theme="dark"] .info-banner {
+  background: #151515;
+  border-color: var(--border);
+  border-left-color: var(--green-700);
+  color: var(--ink);
+}
+[data-theme="dark"] .info-banner strong {
+  color: var(--ink);
+}
+
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .btn-success {
+  background: var(--green-700);
+  color: #ffffff;
+}
+[data-theme="dark"] .btn-primary:hover:not(:disabled),
+[data-theme="dark"] .btn-success:hover:not(:disabled) {
+  background: #ff5d81;
+}
 
 .btn-sm { padding: 5px 11px; font-size: 12px; }
 

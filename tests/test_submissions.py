@@ -110,6 +110,37 @@ async def test_analyze_draft(client: AsyncClient, team_member):
 
 
 @pytest.mark.asyncio
+async def test_existing_draft_precheck_is_reused_on_submit(client: AsyncClient, team_member):
+    create_resp = await client.post(
+        "/api/v1/submissions/",
+        json={
+            **SUBMISSION_PAYLOAD,
+            "ai_precheck": MOCK_SCORECARD.model_dump(),
+            "precheck_workflow_memory": {"trace": {"graph_name": "draft_review"}},
+        },
+        headers=auth_headers(team_member),
+    )
+    assert create_resp.status_code == 201
+    sub_id = create_resp.json()["id"]
+
+    with patch(
+        "services.ai_service.AIService.review_document",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("review_document should not be called when precheck is already persisted"),
+    ):
+        submit_resp = await client.post(
+            f"/api/v1/submissions/{sub_id}/submit",
+            headers=auth_headers(team_member),
+        )
+
+    assert submit_resp.status_code == 200
+    data = submit_resp.json()
+    assert data["ai_score"] == 78
+    assert data["ai_scorecard"]["grammar_check"]["score"] == 17
+    assert data["status"] == "pending"
+
+
+@pytest.mark.asyncio
 async def test_founder_can_approve(client: AsyncClient, team_member, founder_user):
     # Create + submit
     create_resp = await client.post(
@@ -172,6 +203,49 @@ async def test_founder_can_update_visibility_after_approval(client: AsyncClient,
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["visibility"]["visible_to_departments"] == ["marketing"]
+
+
+@pytest.mark.asyncio
+async def test_rejected_submission_returns_founder_feedback_to_member(client: AsyncClient, team_member, founder_user):
+    create_resp = await client.post(
+        "/api/v1/submissions/",
+        json=SUBMISSION_PAYLOAD,
+        headers=auth_headers(team_member),
+    )
+    sub_id = create_resp.json()["id"]
+
+    with patch(
+        "services.ai_service.AIService.review_document",
+        new_callable=AsyncMock,
+        return_value=MOCK_SCORECARD,
+    ):
+        await client.post(
+            f"/api/v1/submissions/{sub_id}/submit",
+            headers=auth_headers(team_member),
+        )
+
+    with patch(
+        "services.submission_workflow_service.SubmissionWorkflowService.generate_rejection_note",
+        new_callable=AsyncMock,
+        return_value="Please tighten the opening and make the CTA clearer.",
+    ):
+        review_resp = await client.post(
+            f"/api/v1/submissions/{sub_id}/review",
+            json={"action": "reject", "founder_note": "Please simplify the tone and sharpen the CTA."},
+            headers=auth_headers(founder_user),
+        )
+
+    assert review_resp.status_code == 200
+    assert review_resp.json()["feedback"]["founder_note"] == "Please simplify the tone and sharpen the CTA."
+    assert review_resp.json()["feedback"]["ai_generated_note"] == "Please tighten the opening and make the CTA clearer."
+
+    detail_resp = await client.get(
+        f"/api/v1/submissions/{sub_id}",
+        headers=auth_headers(team_member),
+    )
+    assert detail_resp.status_code == 200
+    assert detail_resp.json()["feedback"]["founder_note"] == "Please simplify the tone and sharpen the CTA."
+    assert detail_resp.json()["feedback"]["ai_generated_note"] == "Please tighten the opening and make the CTA clearer."
 
 
 @pytest.mark.asyncio

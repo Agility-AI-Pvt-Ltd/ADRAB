@@ -82,8 +82,43 @@ export const submissionsApi = {
     return client.post<{ file_name: string; extracted_text: string | null }>('/submissions/extract-file', fd);
   },
 
-  create: (doc_type: DocumentType, stakeholder: Stakeholder, content: string, context_form_data?: object) =>
-    client.post<Submission>('/submissions/', { doc_type, stakeholder, content, context_form_data }),
+  create: (
+    doc_type: DocumentType,
+    stakeholder: Stakeholder,
+    content: string,
+    options?: {
+      fields?: Record<string, string>;
+      ai_precheck?: {
+        score: number;
+        dimensions: {
+          tone_voice: number;
+          format_structure: number;
+          stakeholder_fit: number;
+          missing_elements: number;
+          improvement_scope: number;
+        };
+        grammar_check?: {
+          score: number;
+          notes: string[];
+        } | null;
+        suggestions: {
+          original: string;
+          replacement: string;
+          reason: string;
+        }[];
+        rewrite: string;
+      };
+      precheck_workflow_memory?: unknown;
+    }
+  ) =>
+    client.post<Submission>('/submissions/', {
+      doc_type,
+      stakeholder,
+      content,
+      context_form_data: options?.fields ? { fields: options.fields } : undefined,
+      ai_precheck: options?.ai_precheck,
+      precheck_workflow_memory: options?.precheck_workflow_memory,
+    }),
 
   submit: (id: string) =>
     client.post<Submission>(`/submissions/${id}/submit`),

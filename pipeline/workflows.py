@@ -106,15 +106,28 @@ class SubmissionWorkflowService:
             workflow_memory=state["workflow_memory"],
         )
 
-    async def generate_rejection_note(self, scorecard: dict, doc_type: str) -> str:
+    async def generate_rejection_note(
+        self,
+        scorecard: dict,
+        doc_type: str,
+        member_name: str,
+        founder_name: str,
+    ) -> str:
         trace = create_workflow_trace(
             "rejection_note",
-            inputs={"doc_type": doc_type, "scorecard": scorecard},
+            inputs={
+                "doc_type": doc_type,
+                "scorecard": scorecard,
+                "member_name": member_name,
+                "founder_name": founder_name,
+            },
         )
         state = await self._rejection_note_graph.ainvoke(
             {
                 "scorecard": scorecard,
                 "doc_type": doc_type,
+                "member_name": member_name,
+                "founder_name": founder_name,
                 "workflow_trace": trace,
             }
         )
@@ -473,6 +486,8 @@ class SubmissionWorkflowService:
         rejection_note = await state["ai_service"].generate_rejection_note(
             state["scorecard"],
             state["doc_type"],
+            state["member_name"],
+            state["founder_name"],
         )
         return {"rejection_note": rejection_note}
 

@@ -184,9 +184,9 @@ Respond ONLY with the revised document text — no preamble, no JSON, no markdow
 """.strip()
 
     @staticmethod
-    def rejection_note(scorecard: dict, doc_type: str) -> str:
+    def rejection_note(scorecard: dict, doc_type: str, member_name: str, founder_name: str) -> str:
         return f"""
-Generate a concise, constructive rejection note for a team member whose {doc_type} document
+Generate a concise, constructive rejection note for a team member named {member_name} whose {doc_type} document
 received this AI scorecard:
 
 {json.dumps(scorecard, indent=2)}
@@ -196,6 +196,9 @@ The note must:
 - Name the 2-3 most important things to fix
 - Reference specific Lyfshilp brand guidelines (e.g. missing Stanford Seed credential, salesy opener, wrong tone for stakeholder)
 - End with an encouraging sentence
+- Address the team member directly with "Hi {member_name}"
+- Sign off naturally as "{founder_name}" at the end
+- NEVER output generic template brackets or placeholder fields. Use the exact names provided.
 
 Keep it under 100 words. Respond ONLY with the note text.
 """.strip()
@@ -246,8 +249,14 @@ class AIService:
         )
         return await self._call(prompt, operation="refine_draft")
 
-    async def generate_rejection_note(self, scorecard: dict, doc_type: str) -> str:
-        prompt = PromptBuilder.rejection_note(scorecard, doc_type)
+    async def generate_rejection_note(
+        self,
+        scorecard: dict,
+        doc_type: str,
+        member_name: str,
+        founder_name: str,
+    ) -> str:
+        prompt = PromptBuilder.rejection_note(scorecard, doc_type, member_name, founder_name)
         return await self._call(prompt, operation="generate_rejection_note")
 
     # ── Private helpers ───────────────────────────────────────────────────────

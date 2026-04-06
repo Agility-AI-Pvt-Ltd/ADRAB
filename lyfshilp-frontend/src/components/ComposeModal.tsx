@@ -171,8 +171,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     if (!trace) return null;
 
     return (
-      <details style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--white)' }}>
-        <summary style={{ cursor: 'pointer', padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>
+      <details style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--white)', color: 'var(--ink)' }}>
+        <summary style={{ cursor: 'pointer', padding: '12px 16px', fontSize: 13, fontWeight: 600, background: 'var(--surface)', color: 'var(--ink)' }}>
           {title}
         </summary>
         <div style={{ padding: '0 16px 16px', display: 'grid', gap: 14 }}>
@@ -185,17 +185,17 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
 
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Database Queries</div>
-            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(trace.db_queries ?? [], null, 2)}</pre>
+            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--ink)' }}>{JSON.stringify(trace.db_queries ?? [], null, 2)}</pre>
           </div>
 
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Context Blocks</div>
-            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(trace.context_blocks ?? {}, null, 2)}</pre>
+            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--ink)' }}>{JSON.stringify(trace.context_blocks ?? {}, null, 2)}</pre>
           </div>
 
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>AI Calls</div>
-            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(trace.ai_calls ?? [], null, 2)}</pre>
+            <pre className="rewrite-box" style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--ink)' }}>{JSON.stringify(trace.ai_calls ?? [], null, 2)}</pre>
           </div>
         </div>
       </details>
@@ -330,6 +330,21 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     return 'High revision needed';
   }
 
+  function getCurrentPrecheckPayload() {
+    if (step !== 'existing_draft') return {};
+    if (!existingDraftAnalysis || existingDraftAnalyzedContent !== draft) return {};
+    return {
+      ai_precheck: {
+        score: existingDraftAnalysis.score,
+        dimensions: existingDraftAnalysis.dimensions,
+        grammar_check: existingDraftAnalysis.grammar_check,
+        suggestions: existingDraftAnalysis.suggestions,
+        rewrite: existingDraftAnalysis.rewrite,
+      },
+      precheck_workflow_memory: existingDraftAnalysis.workflow_memory,
+    };
+  }
+
   // Draft generation
   async function generateDraft() {
     if (!docType || !stakeholder) return;
@@ -401,7 +416,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     if (!docType || !stakeholder || !draft.trim()) return;
     setSubmitting(true);
     try {
-      const { data } = await submissionsApi.create(docType, stakeholder, draft, { fields: contextFields });
+      const { data } = await submissionsApi.create(docType, stakeholder, draft, {
+        fields: contextFields,
+        ...getCurrentPrecheckPayload(),
+      });
       toast('success', 'Saved as draft');
       onCreated();
       onClose();
@@ -421,7 +439,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     }
     setSubmitting(true);
     try {
-      const { data: created } = await submissionsApi.create(docType, stakeholder, draft, { fields: contextFields });
+      const { data: created } = await submissionsApi.create(docType, stakeholder, draft, {
+        fields: contextFields,
+        ...getCurrentPrecheckPayload(),
+      });
       // Upload file if attached
       if (uploadedFile) {
         await submissionsApi.uploadFile(created.id, uploadedFile);
@@ -670,8 +691,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
 
           {existingDraftAnalysis && (
-            <div style={{ marginBottom: 20, border: '1px solid var(--border)', borderRadius: 16, background: 'var(--surface)', overflow: 'hidden' }}>
-              <div style={{ padding: '18px 22px', background: 'var(--white)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ marginBottom: 20, border: '1px solid var(--border)', borderRadius: 16, background: 'var(--white)', overflow: 'hidden', color: 'var(--ink)' }}>
+              <div style={{ padding: '18px 22px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Readiness Score</div>
                   <div style={{ fontSize: 15, color: 'var(--ink-soft)' }}>{readinessLabel(existingDraftAnalysis.score)}</div>
@@ -680,7 +701,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                   {existingDraftAnalysis.score}/100
                 </div>
               </div>
-              <div style={{ padding: '18px 22px' }}>
+              <div style={{ padding: '18px 22px', background: 'var(--white)', color: 'var(--ink)' }}>
                 <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 18 }}>
                   <div><strong>Tone:</strong> {existingDraftAnalysis.dimensions.tone_voice}/20</div>
                   <div><strong>Structure:</strong> {existingDraftAnalysis.dimensions.format_structure}/20</div>
