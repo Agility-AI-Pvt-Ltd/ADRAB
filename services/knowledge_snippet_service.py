@@ -1,3 +1,4 @@
+
 """
 Knowledge Snippet Service
 Stores reusable factual context in PostgreSQL and injects it into AI prompts.

@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
 import { adminApi, submissionsApi } from '../api';
-import type { DocumentGuidance, DocumentType, Stakeholder } from '../types';
+import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse } from '../types';
+
+interface ChatMessage {
+  role: 'user' | 'ai';
+  content: string;
+  analysis?: DraftAnalysisResponse;
+}
 
 const STAKEHOLDERS: { value: Stakeholder; label: string }[] = [
   { value: 'parent', label: 'Parent' },
@@ -22,7 +28,7 @@ const REFINE_ACTIONS = [
   { action: 'regenerate', label: '↺ Regenerate' },
 ];
 
-type Step = 'type' | 'context' | 'draft' | 'done';
+type Step = 'type' | 'prompt_method' | 'context' | 'custom_prompt' | 'draft' | 'done';
 
 interface Props { onClose: () => void; onCreated: () => void; }
 
@@ -137,12 +143,28 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [docType, setDocType] = useState<DocumentType | null>(null);
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
   const [contextFields, setContextFields] = useState<Record<string, string>>({});
+  const [customPromptText, setCustomPromptText] = useState('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [baseDraft, setBaseDraft] = useState<string | null>(null);
+  const [pendingChatInput, setPendingChatInput] = useState<string | null>(null); // awaiting suggestion pick
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [generating, setGenerating] = useState(false);
   const [refining, setRefining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Suggestions from the most recent AI message
+  const lastAiMsg = [...chatMessages].reverse().find(m => m.role === 'ai');
+  const lastSuggestions = lastAiMsg?.analysis?.suggestions ?? [];
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, generating]);
+
 
   // Pretext-powered auto-resize ref for the draft textarea
   const draftRef = useAutoResize(draft, { minHeight: 260, maxHeight: 560 });
@@ -180,12 +202,89 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     .filter((field) => field.required)
     .every((field) => (contextFields[field.key] ?? '').trim());
 
+  // Chat generation
+  async function sendChatMessage() {
+    if (!chatInput.trim() || !docType || !stakeholder) return;
+    const input = chatInput.trim();
+    setChatInput('');
+
+    if (baseDraft === null) {
+      // First message → generate fresh draft immediately
+      setChatMessages((prev) => [...prev, { role: 'user', content: input }]);
+      setGenerating(true);
+      try {
+        const { data } = await submissionsApi.generateDraft(docType, stakeholder, {
+          "User's Complete Custom Prompt": input
+        });
+        const resultDraft = data.draft;
+        setBaseDraft(resultDraft);
+        const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
+        setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis }]);
+      } catch (e: any) {
+        toast('error', e.response?.data?.detail ?? 'Failed to generate draft');
+      } finally {
+        setGenerating(false);
+      }
+    } else if (lastSuggestions.length > 0) {
+      // Follow-up with suggestions available → pause and show picker
+      setSelectedSuggestions(new Set());
+      setPendingChatInput(input);
+    } else {
+      // Follow-up with no suggestions → refine immediately
+      await executeRefine(input, []);
+    }
+  }
+
+  async function executeRefine(userInstruction: string, applySuggestions: number[]) {
+    if (!docType || !stakeholder || !baseDraft) return;
+    setChatMessages((prev) => [...prev, { role: 'user', content: userInstruction }]);
+    setPendingChatInput(null);
+    setGenerating(true);
+    try {
+      // Build an explicit human_input so the AI doesn't invent other changes
+      let human_input = `INSTRUCTION: ${userInstruction}\n\n`;
+      if (applySuggestions.length > 0) {
+        human_input += 'ALSO APPLY THESE SPECIFIC IMPROVEMENTS (and nothing else beyond the instruction above):\n';
+        applySuggestions.forEach((idx) => {
+          const s = lastSuggestions[idx];
+          if (s) human_input += `- Replace "${s.original}" → "${s.replacement}" (Reason: ${s.reason})\n`;
+        });
+      } else {
+        human_input += 'IMPORTANT: Apply ONLY the instruction above. Do NOT apply any other suggestions or improvements not explicitly listed here.';
+      }
+
+      const { data } = await submissionsApi.refineDraft(baseDraft, 'regenerate', docType, stakeholder, human_input);
+      const resultDraft = data.draft;
+      const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
+      setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis }]);
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Refinement failed');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function clearChat() {
+    setChatMessages([]);
+    setChatInput('');
+    setBaseDraft(null);
+  }
+
+  function useDraftFromChat(draftContent: string) {
+    setDraft(draftContent);
+    setStep('draft');
+  }
+
   // Draft generation
   async function generateDraft() {
     if (!docType || !stakeholder) return;
     setGenerating(true);
     try {
-      const { data } = await submissionsApi.generateDraft(docType, stakeholder, contextFields);
+      const formData = step === 'custom_prompt'
+        ? { "User's Complete Custom Prompt": customPromptText }
+        : contextFields;
+
+      const { data } = await submissionsApi.generateDraft(docType, stakeholder, formData);
       setDraft(data.draft);
       setStep('draft');
     } catch (e: any) {
@@ -297,9 +396,9 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             <button
               className="btn btn-primary"
               disabled={!docType || !stakeholder}
-              onClick={() => setStep('context')}
+              onClick={() => setStep('prompt_method')}
             >
-              Next: Add Context →
+              Next: Compose Method →
             </button>
           </div>
         </div>
@@ -310,8 +409,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   // Step: Context form
   if (step === 'context') {
     return (
-      <Modal title="Add Context" subtitle="Help the AI write in the right voice" onClose={onClose} size="lg">
-        <div>
+      <Modal title="Add Context" subtitle="Help the AI write in the right voice" onClose={onClose} size="full">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '70vh' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
             {docType && <DocTypeChip type={docType} />}
             <span style={{ fontSize: 13, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
@@ -319,7 +418,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, flex: 1, alignContent: 'start' }}>
             {visibleFieldDefs.map((field) => (
               <div
                 key={field.key}
@@ -351,7 +450,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-            <button className="btn btn-outline" onClick={() => setStep('type')}>← Back</button>
+            <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Back</button>
             <button
               className="btn btn-primary"
               disabled={!canGenerateDraft || generating}
@@ -365,11 +464,257 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     );
   }
 
+  // Step: Choose prompt method
+  if (step === 'prompt_method') {
+    return (
+      <Modal title="Compose Method" subtitle="How would you like to create this document?" onClose={onClose} size="full">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: '100%', maxWidth: 840 }}>
+            {/* Option 1: Custom Prompt */}
+            <div
+              className="method-card"
+              style={{ padding: 32, border: '1px solid var(--border)', borderRadius: 16, cursor: 'pointer', background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
+              onClick={() => setStep('custom_prompt')}
+            >
+              <div style={{ fontSize: 24, marginBottom: 16 }}>✍️</div>
+              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Provide Complete Prompt</h3>
+              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Write or paste your own exact prompt for the AI to follow. We'll combine it with your Brand Voice rules.</p>
+            </div>
+
+            {/* Option 2: Default Context Form */}
+            <div
+              className="method-card"
+              style={{ padding: 32, border: '1px solid var(--border)', borderRadius: 16, cursor: 'pointer', background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
+              onClick={() => setStep('context')}
+            >
+              <div style={{ fontSize: 24, marginBottom: 16 }}>📋</div>
+              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Use Guided Form</h3>
+              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Answer a few quick questions (e.g., objective, recipient). We will construct the perfect AI prompt automatically.</p>
+            </div>
+          </div>
+          <button className="btn btn-outline" onClick={() => setStep('type')}>← Back to Document Type</button>
+        </div>
+      </Modal>
+    );
+  }
+
+    // Step: Custom Prompt Editor
+  if (step === 'custom_prompt') {
+    return (
+      <Modal title="Interactive Compose" subtitle="Chat with AI to produce and refine your document" onClose={onClose} size="full">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
+            {docType && <DocTypeChip type={docType} />}
+            <span style={{ fontSize: 13, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
+              → {stakeholder}
+            </span>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', marginBottom: 20, padding: '10px 4px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {chatMessages.length === 0 && (
+              <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--ink-soft)' }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>✨</div>
+                <div>Send your detailed prompt below to begin generating.</div>
+              </div>
+            )}
+            {chatMessages.map((msg, i) => (
+              <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+                {msg.role === 'user' ? (
+                  <div style={{ background: 'var(--ink)', color: 'var(--white)', padding: '16px 20px', borderRadius: '20px 20px 4px 20px', fontSize: 15, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    {msg.content}
+                  </div>
+                ) : (
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '20px 20px 20px 4px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                    <div style={{ padding: '24px 30px', borderBottom: '1px solid var(--border)', background: 'var(--white)', fontSize: 15, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                      {msg.content}
+                    </div>
+                    {msg.analysis && (
+                      <div style={{ padding: '20px 30px', background: 'var(--surface)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>AI Scorecard</span>
+                          <span style={{ fontWeight: 800, fontSize: 18, color: msg.analysis.score >= 80 ? 'var(--green-700)' : msg.analysis.score >= 60 ? '#f59e0b' : 'var(--red-600)' }}>
+                            {msg.analysis.score} / 100
+                          </span>
+                        </div>
+                        {msg.analysis.dimensions && (
+                          <div style={{ marginBottom: 24, padding: 16, background: 'var(--white)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score Breakdown (out of 20)</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Tone & Voice</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: msg.analysis.dimensions.tone_voice < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.dimensions.tone_voice}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Format & Structure</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: msg.analysis.dimensions.format_structure < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.dimensions.format_structure}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Stakeholder Fit</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: msg.analysis.dimensions.stakeholder_fit < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.dimensions.stakeholder_fit}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Completeness</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: msg.analysis.dimensions.missing_elements < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.dimensions.missing_elements}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Improvement</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: msg.analysis.dimensions.improvement_scope < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.dimensions.improvement_scope}</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {msg.analysis.suggestions.length > 0 && (
+                          <div style={{ marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Suggestions</div>
+                            <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--ink-soft)' }}>
+                              {msg.analysis.suggestions.slice(0, 3).map((s, idx) => (
+                                <li key={idx} style={{ marginBottom: 8 }}>{s.reason}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <button className="btn btn-primary" onClick={() => useDraftFromChat(msg.content)}>
+                          Use this Draft →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            {generating && (
+              <div style={{ alignSelf: 'flex-start', padding: 20, color: 'var(--ink-soft)' }}>
+                <Spinner dark /> Generating Response…
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Suggestion Picker — only appears when user sends a follow-up and suggestions exist */}
+          {pendingChatInput !== null && (
+            <div style={{ marginBottom: 12, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface)', overflow: 'hidden' }}>
+              <div style={{ padding: '14px 20px', background: 'var(--white)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>Apply AI suggestions?</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+                    Select which improvements to also apply alongside your change. Unselected ones will be ignored.
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 12, color: 'var(--ink-soft)' }}
+                  onClick={() => setPendingChatInput(null)}
+                >✕ Cancel</button>
+              </div>
+              <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {lastSuggestions.map((s, idx) => {
+                  const checked = selectedSuggestions.has(idx);
+                  return (
+                    <label
+                      key={idx}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', padding: '10px 14px', borderRadius: 8, background: checked ? 'var(--ink-5, rgba(0,0,0,0.04))' : 'transparent', border: `1px solid ${checked ? 'var(--ink)' : 'var(--border)'}`, transition: 'all 0.15s' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedSuggestions(prev => {
+                            const next = new Set(prev);
+                            if (next.has(idx)) next.delete(idx); else next.add(idx);
+                            return next;
+                          });
+                        }}
+                        style={{ marginTop: 2, flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: 'var(--ink)', marginBottom: 4 }}>{s.reason}</div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ textDecoration: 'line-through' }}>{s.original}</span>
+                          <span>→</span>
+                          <span style={{ color: 'var(--ink)', fontStyle: 'italic' }}>{s.replacement}</span>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => executeRefine(pendingChatInput, [])}
+                >
+                  Skip — Apply my change only
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => executeRefine(pendingChatInput, Array.from(selectedSuggestions))}
+                >
+                  Refine with {selectedSuggestions.size} suggestion{selectedSuggestions.size !== 1 ? 's' : ''} →
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ position: 'relative' }}>
+            <textarea
+              className="form-textarea"
+              style={{ minHeight: 60, paddingRight: 60, paddingBottom: 16, paddingTop: 16, resize: 'none' }}
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendChatMessage();
+                }
+              }}
+              placeholder={chatMessages.length === 0 ? "Paste your complete prompt here (Press Enter to send)..." : "Ask AI to change something..."}
+              disabled={generating || pendingChatInput !== null}
+            />
+            <button
+              className="btn btn-primary"
+              style={{ position: 'absolute', right: 8, bottom: 8, padding: '8px 14px', borderRadius: 8 }}
+              disabled={generating || !chatInput.trim() || pendingChatInput !== null}
+              onClick={sendChatMessage}
+            >
+              ↑
+            </button>
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setStep('prompt_method')} disabled={generating}
+              style={{ color: 'var(--ink-soft)', fontSize: 13 }}>
+              ← Back
+            </button>
+            {chatMessages.length > 0 && (
+              <button
+                onClick={clearChat}
+                disabled={generating}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 12, fontWeight: 500, color: 'var(--ink-soft)',
+                  background: 'transparent', border: '1px solid var(--border)',
+                  borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ink)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ink)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ink-soft)'; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
+                </svg>
+                Start Over
+              </button>
+            )}
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   // Step: Draft editor
   if (step === 'draft') {
     return (
-      <Modal title="Review & Edit Draft" subtitle="Refine, edit, then submit for founder review" onClose={onClose} size="lg">
-        <div>
+      <Modal title="Review & Edit Draft" subtitle="Refine, edit, then submit for founder review" onClose={onClose} size="full">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
           {/* Refine toolbar */}
           <div className="draft-toolbar">
             <span className="draft-toolbar-label">AI Refine</span>
@@ -382,14 +727,14 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
 
           {/* Editable draft — Pretext auto-resizes to fit content exactly */}
-          <div className="form-group">
-            <label className="form-label">Draft Content</label>
+          <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <label className="form-label" style={{ marginBottom: 10 }}>Draft Content</label>
             <textarea
               ref={draftRef}
               className="form-textarea"
               value={draft}
               onChange={e => setDraft(e.target.value)}
-              style={{ minHeight: 260, resize: 'none', transition: 'height 0.15s ease' }}
+              style={{ flex: 1, minHeight: 400, resize: 'vertical', transition: 'height 0.15s ease', fontSize: 15 }}
               disabled={refining}
             />
           </div>
@@ -428,7 +773,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-            <button className="btn btn-outline" onClick={() => setStep('context')}>← Edit Context</button>
+            <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Edit Instructions</button>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 className="btn btn-outline"

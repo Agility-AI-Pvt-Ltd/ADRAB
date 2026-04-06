@@ -595,6 +595,57 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
               </a>
             </div>
           )}
+
+          {submission.ai_scorecard && (
+            <div style={{ marginTop: 28, marginBottom: 16 }}>
+              <div className="detail-section-title">AI Scorecard (Pre-Evaluation)</div>
+              <div style={{ padding: '24px 30px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>Platform AI Analysis</span>
+                  <span style={{ fontWeight: 800, fontSize: 18, color: (submission.ai_scorecard.score ?? 0) >= 80 ? 'var(--green-700)' : (submission.ai_scorecard.score ?? 0) >= 60 ? '#f59e0b' : 'var(--red-600)' }}>
+                    {submission.ai_scorecard.score ?? 0} / 100
+                  </span>
+                </div>
+                {submission.ai_scorecard.dimensions && (
+                  <div style={{ marginBottom: 24, padding: 16, background: 'var(--white)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score Breakdown (out of 20)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Tone & Voice</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: submission.ai_scorecard.dimensions.tone_voice < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{submission.ai_scorecard.dimensions.tone_voice}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Format & Structure</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: submission.ai_scorecard.dimensions.format_structure < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{submission.ai_scorecard.dimensions.format_structure}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Stakeholder Fit</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: submission.ai_scorecard.dimensions.stakeholder_fit < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{submission.ai_scorecard.dimensions.stakeholder_fit}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Completeness</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: submission.ai_scorecard.dimensions.missing_elements < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{submission.ai_scorecard.dimensions.missing_elements}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Improvement</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: submission.ai_scorecard.dimensions.improvement_scope < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{submission.ai_scorecard.dimensions.improvement_scope}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {(submission.ai_scorecard.suggestions?.length || 0) > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Suggestions Encountered</div>
+                    <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--ink-soft)' }}>
+                      {submission.ai_scorecard.suggestions?.slice(0, 5).map((s: any, idx: number) => (
+                        <li key={idx} style={{ marginBottom: 8 }}>{s.reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -676,14 +727,14 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
                   onClick={() => setReviewAction(a)}
                   style={a === 'reject' && reviewAction === a ? { background: 'var(--danger)' } : {}}
                 >
-                  {a === 'approve' ? '✓ Approve' : a === 'approve_with_edits' ? '✎ Approve with Edits' : '✕ Reject'}
+                  {a === 'approve' ? '✓ Approve' : a === 'approve_with_edits' ? '✎ Approve with Edits' : '↩ Request Edits'}
                 </button>
               ))}
             </div>
           </div>
 
           <div style={{ marginBottom: 16, padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 13 }}>
-            <div><strong>Founder changes:</strong> {reviewAction === 'approve_with_edits' ? (founderEdited ? 'Founder edited the final version' : 'Approve with edits selected, but no content change made yet') : 'Approve as-is or reject without content edits'}</div>
+            <div><strong>Founder changes:</strong> {reviewAction === 'approve_with_edits' ? (founderEdited ? 'Founder edited the final version' : 'Approve with edits selected, but no content change made yet') : reviewAction === 'reject' ? 'Send the document back to the team member for revision.' : 'Approve as-is without content edits.'}</div>
             {reviewAction !== 'reject' && (
               <div style={{ marginTop: 6 }}><strong>Final visibility:</strong> {renderVisibilitySummary()}</div>
             )}
@@ -711,13 +762,13 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
           )}
 
           <div className="form-group">
-            <label className="form-label">Note to Team Member <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>(optional)</span></label>
+            <label className="form-label">Add Suggestion or Comment <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>(optional)</span></label>
             <textarea
               ref={founderNoteRef}
               className="form-textarea"
               value={founderNote}
               onChange={e => setFounderNote(e.target.value)}
-              placeholder="Add context, guidance, or praise..."
+              placeholder="Provide suggestions or exact instructions for the edits..."
               style={{ minHeight: 100, resize: 'none', transition: 'height 0.15s ease' }}
             />
           </div>
@@ -728,7 +779,7 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
             onClick={handleReview}
             disabled={submitting}
           >
-            {submitting ? <Spinner /> : `Confirm ${reviewAction.replace(/_/g, ' ')}`}
+            {submitting ? <Spinner /> : reviewAction === 'reject' ? 'Confirm Request Edits' : `Confirm ${reviewAction.replace(/_/g, ' ')}`}
           </button>
         </div>
       )}

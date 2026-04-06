@@ -164,3 +164,22 @@ export interface DocumentGuidance {
   key_requirements: string;
   updated_at: string;
 }
+
+export interface DraftAnalysisResponse {
+  score: number;
+  dimensions: {
+    tone_voice: number;
+    format_structure: number;
+    stakeholder_fit: number;
+    missing_elements: number;
+    improvement_scope: number;
+  };
+  suggestions: {
+    original: string;
+    replacement: string;
+    reason: string;
+  }[];
+  rewrite: string;
+  workflow_stage: string;
+  workflow_memory: any;
+}

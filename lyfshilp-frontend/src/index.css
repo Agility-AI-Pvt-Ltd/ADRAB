@@ -1504,3 +1504,9 @@ tbody tr:hover { background: var(--green-50); }
   color: #AAAAAA;
   margin-right: 8px;
 }
+
+.method-card:hover {
+  border-color: var(--green-600) !important;
+  background: var(--green-50) !important;
+  transform: translateY(-2px);
+}

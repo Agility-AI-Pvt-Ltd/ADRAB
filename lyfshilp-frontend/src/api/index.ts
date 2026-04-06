@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type {
   TokenResponse, User, Submission, DashboardData,
-  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance
+  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse
 } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -66,9 +66,14 @@ export const submissionsApi = {
       doc_type, stakeholder, context_form_data: { fields }
     }),
 
-  refineDraft: (content: string, action: string, doc_type: DocumentType, stakeholder: Stakeholder) =>
+  analyzeDraft: (doc_type: DocumentType, stakeholder: Stakeholder, content: string) =>
+    client.post<DraftAnalysisResponse>('/submissions/analyze-draft', {
+      doc_type, stakeholder, content
+    }),
+
+  refineDraft: (content: string, action: string, doc_type: DocumentType, stakeholder: Stakeholder, human_input?: string) =>
     client.post<{ draft: string }>('/submissions/refine-draft', {
-      content, action, doc_type, stakeholder
+      content, action, doc_type, stakeholder, human_input
     }),
 
   create: (doc_type: DocumentType, stakeholder: Stakeholder, content: string, context_form_data?: object) =>
