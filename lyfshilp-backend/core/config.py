@@ -5,7 +5,7 @@ Uses pydantic-settings for validation and type coercion.
 """
 
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     FRONTEND_URL: str  # Required — set in .env e.g. https://adrab.vercel.app
 
     # ── PostgreSQL (with async + pooling) ─────────────────────────────────────
+    DATABASE_URL_OVERRIDE: Optional[str] = Field(default=None, validation_alias="DATABASE_URL")
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
@@ -63,6 +64,12 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         """Async DSN for asyncpg / SQLAlchemy async."""
+        if self.DATABASE_URL_OVERRIDE:
+            if self.DATABASE_URL_OVERRIDE.startswith("postgresql+asyncpg://"):
+                return self.DATABASE_URL_OVERRIDE
+            if self.DATABASE_URL_OVERRIDE.startswith("postgresql://"):
+                return self.DATABASE_URL_OVERRIDE.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return self.DATABASE_URL_OVERRIDE
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"

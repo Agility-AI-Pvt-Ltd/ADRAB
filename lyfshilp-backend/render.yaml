@@ -1,0 +1,116 @@
+databases:
+  - name: lyfshilp-postgres
+    databaseName: lyfshilp
+    user: lyfshilp_user
+    plan: free
+    region: singapore
+
+services:
+  - type: web
+    name: lyfshilp-backend
+    runtime: python
+    rootDir: lyfshilp-backend
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: APP_DEBUG
+        value: "false"
+      - key: API_V1_PREFIX
+        value: /api/v1
+      - key: AUTO_INIT_DB
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: https://adrab.vercel.app
+      - key: FRONTEND_URL
+        value: https://adrab.vercel.app
+      - key: GOOGLE_REDIRECT_URI
+        value: https://adrab.vercel.app/auth/google/callback
+      - key: ALLOWED_EMAIL_DOMAIN
+        value: agilityai.in
+      - key: ALLOWED_EMAIL_EXCEPTIONS
+        value: kk612470@gmail.com,krrishksd612470@gmail.com,krishnamsc24@cs.du.ac.in
+      - key: FIRST_FOUNDER_NAME
+        value: Sharad
+      - key: FIRST_FOUNDER_EMAIL
+        value: sharad@agilityai.in
+      - key: FIRST_FOUNDER_PASSWORD
+        value: password
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: DB_POOL_SIZE
+        value: "10"
+      - key: DB_MAX_OVERFLOW
+        value: "20"
+      - key: DB_POOL_TIMEOUT
+        value: "30"
+      - key: DB_POOL_RECYCLE
+        value: "1800"
+      - key: DB_POOL_PRE_PING
+        value: "true"
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_MAX_TOKENS
+        value: "2000"
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "10"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_FORMAT
+        value: json
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: EMAIL_FROM
+        value: noreply@agilityai.in
+      - key: PASSWORD_RESET_EXPIRE_MINUTES
+        value: "30"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lyfshilp-postgres
+          property: connectionString
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: lyfshilp-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: lyfshilp-postgres
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: lyfshilp-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: lyfshilp-postgres
+          property: password
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: lyfshilp-postgres
+          property: database
+      - key: SECRET_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
