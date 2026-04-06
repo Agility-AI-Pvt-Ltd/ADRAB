@@ -6,6 +6,7 @@ Uses pydantic-settings for validation and type coercion.
 
 from functools import lru_cache
 from typing import List, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,11 +66,32 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         """Async DSN for asyncpg / SQLAlchemy async."""
         if self.DATABASE_URL_OVERRIDE:
-            if self.DATABASE_URL_OVERRIDE.startswith("postgresql+asyncpg://"):
-                return self.DATABASE_URL_OVERRIDE
-            if self.DATABASE_URL_OVERRIDE.startswith("postgresql://"):
-                return self.DATABASE_URL_OVERRIDE.replace("postgresql://", "postgresql+asyncpg://", 1)
-            return self.DATABASE_URL_OVERRIDE
+            url = self.DATABASE_URL_OVERRIDE
+            if url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            if url.startswith("postgresql+asyncpg://"):
+                parsed = urlsplit(url)
+                query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+                normalized_query: list[tuple[str, str]] = []
+                for key, value in query_pairs:
+                    if key == "sslmode":
+                        normalized_query.append(("ssl", value))
+                    elif key == "channel_binding":
+                        continue
+                    else:
+                        normalized_query.append((key, value))
+                return urlunsplit(
+                    (
+                        parsed.scheme,
+                        parsed.netloc,
+                        parsed.path,
+                        urlencode(normalized_query),
+                        parsed.fragment,
+                    )
+                )
+
+            return url
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
