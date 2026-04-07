@@ -8,8 +8,9 @@ import os
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.router import api_router
@@ -108,6 +109,22 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["Health"])
     async def health():
         return {"status": "ok", "version": settings.APP_VERSION}
+
+    @app.get("/auth/google/callback", include_in_schema=False)
+    @app.get("/api/v1/auth/google/callback", include_in_schema=False)
+    async def google_callback_bridge(request: Request):
+        """
+        Compatibility bridge for Google OAuth redirects.
+
+        Google can be configured to land on either the bare callback path or the
+        versioned API path. In both cases we hand the browser back to the
+        frontend callback page, preserving the original query string.
+        """
+        query = request.url.query
+        target = f"{settings.FRONTEND_URL.rstrip('/')}/auth/google/callback"
+        if query:
+            target = f"{target}?{query}"
+        return RedirectResponse(url=target, status_code=307)
 
     return app
 
