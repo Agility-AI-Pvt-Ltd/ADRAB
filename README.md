@@ -1,75 +1,54 @@
-# AI Document Review & Approval Tool — Backend
+# Lyfshilp Backend
 
-FastAPI backend for the Lyfshilp Academy AI Document Review & Approval Tool.
-
----
+FastAPI backend for the Lyfshilp AI Document Review and Approval Tool.
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Framework | FastAPI + Uvicorn |
-| Database | PostgreSQL (async via asyncpg) |
+| Database | PostgreSQL |
 | ORM | SQLAlchemy 2 (async) |
-| Auth | JWT (jose) + Google OAuth 2.0 |
+| Auth | JWT + Google OAuth 2.0 |
 | AI | OpenAI API |
-| File Storage | Local disk (`uploads/`) |
-| Config | pydantic-settings |
-
----
+| Storage | Local disk uploads + founder library source files |
+| Config | `pydantic-settings` |
 
 ## Project Structure
 
-```
+```text
 lyfshilp-backend/
-├── app/
-│   ├── main.py                    # App factory, lifespan, CORS
+├── lyfshilp-backend/
+│   ├── main.py
 │   ├── api/
-│   │   ├── dependencies.py        # Shared FastAPI Depends() — auth, roles
-│   │   └── v1/
-│   │       ├── router.py          # Aggregates all endpoint routers
-│   │       └── endpoints/
-│   │           ├── auth.py        # Login, Google OAuth, refresh, /me
-│   │           ├── submissions.py # Full document lifecycle
-│   │           ├── users.py       # User management (admin)
-│   │           └── admin.py       # System prompt, audit log
+│   │   ├── dependencies.py
+│   │   ├── router.py
+│   │   └── endpoints/
+│   │       ├── auth.py
+│   │       ├── admin.py
+│   │       ├── library.py
+│   │       ├── submissions.py
+│   │       ├── users.py
+│   │       └── ...
 │   ├── core/
-│   │   ├── config.py              # All settings from .env (single source of truth)
-│   │   ├── security.py            # JWT, bcrypt, domain enforcement
-│   │   ├── exceptions.py          # Typed exception hierarchy
-│   │   └── logging.py             # Structured JSON / text logging
+│   │   ├── config.py
+│   │   ├── security.py
+│   │   ├── exceptions.py
+│   │   └── logging.py
 │   ├── db/
-│   │   ├── session.py             # Async engine + session factory + pooling
-│   │   ├── base_repository.py     # Generic CRUD base class (OOP)
+│   │   ├── session.py
 │   │   └── repositories/
-│   │       ├── user_repository.py
-│   │       └── submission_repository.py
 │   ├── models/
-│   │   └── models.py              # All SQLAlchemy ORM models
 │   ├── schemas/
-│   │   ├── auth.py                # Request/response Pydantic models for auth
-│   │   ├── user.py
-│   │   ├── submission.py          # Scorecard, draft, review schemas
-│   │   └── admin.py
 │   ├── services/
-│   │   ├── auth_service.py        # Email+password & Google OAuth logic
-│   │   ├── submission_service.py  # Full document lifecycle orchestration
-│   │   ├── ai_service.py          # OpenAI integration
-│   │   ├── file_service.py        # Local upload + PDF/DOCX text extraction
-│   │   └── system_prompt_service.py
 │   └── utils/
-│       └── exception_handlers.py  # Global FastAPI error handlers
+├── scripts/
 ├── tests/
-│   ├── conftest.py
-│   ├── test_auth.py
-│   ├── test_submissions.py
-│   └── test_security.py
 ├── .env.example
+├── render.yaml
 ├── requirements.txt
 └── pytest.ini
 ```
-
----
 
 ## Quick Start
 
@@ -77,222 +56,211 @@ lyfshilp-backend/
 
 - Python 3.12+
 - PostgreSQL 15+
-- An OpenAI API key
-- Google OAuth credentials (for Google sign-in)
-- Writable local storage for uploaded files
+- OpenAI API key
+- Google OAuth credentials
 
-### 2. Clone & Install
+### 2. Install
 
 ```bash
-git clone <repo>
 cd lyfshilp-backend
-
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment
 
 ```bash
-cp .env.example .env
-# Edit .env — fill in every value (DB password, API keys, etc.)
+cp lyfshilp-backend/.env.example .env
 ```
 
-**Critical values to set:**
-```
-SECRET_KEY=<openssl rand -hex 32>
-ALLOWED_EMAIL_DOMAIN=agilityai.in
+Fill in the required values in `.env`, especially:
+
+```env
+SECRET_KEY=...
+ALLOWED_ORIGINS="https://lyfshilp-frontend.vercel.app"
+FRONTEND_URL=https://lyfshilp-frontend.vercel.app
+GOOGLE_REDIRECT_URI=https://lyfshilp-frontend.vercel.app/auth/google/callback
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-OPENAI_API_KEY=sk-...
-POSTGRES_PASSWORD=...
+OPENAI_API_KEY=...
+DATABASE_URL=...
 ```
 
-### 4. Database Setup
+Notes:
 
-```bash
-# Create the database
-createdb lyfshilp
+- `ALLOWED_ORIGINS` must include your deployed frontend origin.
+- `GOOGLE_REDIRECT_URI` must match the Google OAuth client configuration exactly.
+- The app accepts a PostgreSQL `DATABASE_URL` and normalizes it for async usage.
 
-# Tables are created automatically on app startup
-```
-
-To seed the founder-editable document guidance used by AI generation:
-
-```bash
-.venv/bin/python scripts/seed_document_guidance.py
-```
-
-To force-reset those guidance rows back to the default seed content:
-
-```bash
-.venv/bin/python scripts/seed_document_guidance.py --overwrite
-```
-
-To seed the founder-editable AI system prompt used for generation and review:
-
-```bash
-.venv/bin/python scripts/seed_system_prompt.py
-```
-
-To force-reset the active system prompt back to the default seeded stakeholder rules:
-
-```bash
-.venv/bin/python scripts/seed_system_prompt.py --overwrite
-```
-
-To seed the founder-editable stakeholder tone rules used during generation and review:
-
-```bash
-.venv/bin/python scripts/seed_stakeholder_guidance.py
-```
-
-To force-reset those stakeholder rules:
-
-```bash
-.venv/bin/python scripts/seed_stakeholder_guidance.py --overwrite
-```
-
-The app builds its PostgreSQL connection from the `POSTGRES_*` environment variables.
-
-- For local PostgreSQL: keep `POSTGRES_HOST=localhost` and use your local credentials.
-- For cloud PostgreSQL: change only `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
-
-### 5. Run
+### 4. Run Locally
 
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-API docs (dev mode only): http://localhost:8000/docs
+API docs in debug mode:
 
----
+- `http://localhost:8000/docs`
 
 ## Authentication
 
 ### Domain Restriction
 
-**Only `@agilityai.in` emails are permitted.** This is enforced in `app/core/security.py:enforce_allowed_domain()` and applied on every login path — email/password and Google OAuth.
+Only `@agilityai.in` email addresses are allowed to sign in.
 
 ### Email + Password
 
-```
-POST /api/v1/auth/register   # Create account (admin/seeding)
-POST /api/v1/auth/login      # Returns access + refresh tokens
-POST /api/v1/auth/refresh    # Rotate tokens
-GET  /api/v1/auth/me         # Current user profile
+```text
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+GET  /api/v1/auth/me
 ```
 
 ### Google Sign-In
 
-```
-GET  /api/v1/auth/google            # Returns Google consent URL
-POST /api/v1/auth/google/callback   # Exchange code → JWT tokens
+```text
+GET  /api/v1/auth/google
+POST /api/v1/auth/google/callback
 ```
 
-**Flow:**
-1. Frontend calls `GET /auth/google` → gets consent URL
-2. Redirect user to the URL
-3. Google redirects to the frontend callback route, for example `http://localhost:3000/auth/google/callback?code=...`
-4. Frontend posts the code to `POST /auth/google/callback`
-5. Backend validates the email rule, upserts the user, and returns tokens
+Flow:
 
----
+1. Frontend calls `GET /api/v1/auth/google`.
+2. Backend returns the Google consent URL.
+3. Google redirects to the frontend callback route: `/auth/google/callback?code=...`.
+4. The frontend exchanges the `code` with `POST /api/v1/auth/google/callback`.
+5. Backend validates the account and returns JWT access and refresh tokens.
+
+Compatibility note:
+
+- The backend also includes a redirect bridge for `/auth/google/callback` and `/api/v1/auth/google/callback` so hosted deployments can forward the browser back to the frontend callback route.
 
 ## API Overview
 
 ### Submissions
 
-| Method | Path | Who | Description |
-|---|---|---|---|
-| POST | `/submissions/generate-draft` | Team | AI generates fresh draft |
-| POST | `/submissions/refine-draft` | Team | Make shorter / warmer / formal |
-| POST | `/submissions/` | Team | Save draft |
-| POST | `/submissions/{id}/submit` | Team | Run AI review → PENDING |
-| POST | `/submissions/{id}/upload-file` | Team | Attach PDF/DOCX |
-| POST | `/submissions/{id}/resubmit` | Team | New version of rejected doc |
-| GET | `/submissions/my` | Team | Own submissions list |
-| GET | `/submissions/dashboard` | Founder | Pending queue + counts |
-| GET | `/submissions/{id}` | Both | Submission detail |
-| POST | `/submissions/{id}/review` | Founder | Approve / reject |
-| GET | `/submissions/{id}/versions` | Founder | Version history |
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/v1/submissions/generate-draft` | Generate an AI draft |
+| POST | `/api/v1/submissions/refine-draft` | Refine draft text |
+| POST | `/api/v1/submissions/` | Save a draft |
+| POST | `/api/v1/submissions/{id}/submit` | Submit for review |
+| POST | `/api/v1/submissions/{id}/upload-file` | Attach a file |
+| POST | `/api/v1/submissions/{id}/resubmit` | Resubmit a rejected document |
+| GET | `/api/v1/submissions/my` | List current user submissions |
+| GET | `/api/v1/submissions/dashboard` | Founder dashboard data |
+| GET | `/api/v1/submissions/{id}` | View a submission |
+| POST | `/api/v1/submissions/{id}/review` | Approve, edit, or reject |
+| GET | `/api/v1/submissions/{id}/versions` | Version history |
 
-### Admin / Settings
+### Admin
 
-| Method | Path | Who | Description |
-|---|---|---|---|
-| GET | `/admin/system-prompt` | Founder | Active AI brand-voice prompt |
-| PUT | `/admin/system-prompt` | Founder | Update prompt (live, no restart) |
-| GET | `/admin/system-prompt/history` | Founder | All previous prompt versions |
-| GET | `/admin/audit-log` | Founder | Paginated action log |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/admin/system-prompt` | Read active prompt |
+| PUT | `/api/v1/admin/system-prompt` | Update active prompt |
+| GET | `/api/v1/admin/system-prompt/history` | Prompt history |
+| GET | `/api/v1/admin/audit-log` | Audit log |
+
+### Founder Library
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/library/items` | List library items |
+| GET | `/api/v1/library/items/{id}` | Fetch one library item |
+| POST | `/api/v1/library/items` | Create a library item from markdown or an uploaded file |
+| PUT | `/api/v1/library/items/{id}` | Update a library item |
+| PATCH | `/api/v1/library/items/{id}/toggle` | Enable or disable a library item |
 
 ### Users
 
-| Method | Path | Who | Description |
-|---|---|---|---|
-| GET | `/users/` | Founder | List all active users |
-| GET | `/users/{id}` | Both | Fetch user |
-| PATCH | `/users/{id}` | Founder | Update role/department |
-| DELETE | `/users/{id}` | Admin | Soft-delete (deactivate) |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/users/` | List users |
+| GET | `/api/v1/users/{id}` | Fetch one user |
+| PATCH | `/api/v1/users/{id}` | Update role or department |
+| DELETE | `/api/v1/users/{id}` | Deactivate a user |
 
----
+## Environment Variables
 
-## AI Scorecard
+The main settings live in [`lyfshilp-backend/.env.example`](./lyfshilp-backend/.env.example).
 
-Every submitted document is scored across 5 dimensions (20 pts each):
+Important values:
 
-| Dimension | What is checked |
-|---|---|
-| `tone_voice` | Matches Lyfshilp's warm-authoritative voice |
-| `format_structure` | Hook → Proof → CTA structure followed |
-| `stakeholder_fit` | Language appropriate for the audience |
-| `missing_elements` | Credentials, CTA, links, dates present |
-| `improvement_scope` | How much work is still needed |
+- `APP_DEBUG`
+- `API_V1_PREFIX`
+- `ALLOWED_ORIGINS`
+- `SECRET_KEY`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
+- `FRONTEND_URL`
+- `DATABASE_URL` or the `POSTGRES_*` values
+- `OPENAI_API_KEY`
+- `UPLOAD_DIR`
 
-Score guide: 85-100 = approve as-is, 65-84 = minor edits, 40-64 = rewrite recommended, 0-39 = reject.
+## Database and Seeding
 
----
+The app can initialize the database and seed default content on startup when `AUTO_INIT_DB=true`.
 
-## Roles
+Reusable seed scripts:
 
-| Role | Permissions |
-|---|---|
-| `founder` | Full access — review, approve, reject, settings |
-| `team_member` | Create/submit own documents, view own submissions |
-| `admin` | All founder permissions + user deactivation |
+- `scripts/seed_first_founder.py`
+- `scripts/seed_system_prompt.py`
+- `scripts/seed_stakeholder_guidance.py`
+- `scripts/seed_ai_review_guidance.py`
+- `scripts/seed_emoji_guidance.py`
+- `scripts/seed_document_guidance.py`
+- `scripts/seed_few_shot_examples.py`
+- `scripts/import_knowledge_snippet.py`
 
----
+## Founder Library
 
-## Running Tests
+Founders can upload PDFs, DOCX files, TXT files, or paste markdown into the Library section.
+
+The backend stores:
+
+- the original source file under `UPLOAD_DIR`
+- parsed markdown in Postgres
+- matching metadata such as section, document types, stakeholders, and tags
+
+Parsing behavior:
+
+- `llama_parse` is used first when `LLAMA_CLOUD_API_KEY` is configured
+- if parsing fails or the key is missing, the service falls back to local extraction
+- the first step stores parsed markdown in Postgres
+- the second step runs LLM analysis to classify the source, suggest section/tags/doc-type metadata, and surface clarifying questions
+- the generated library content is injected into draft and review prompt assembly when it matches the document type and stakeholder
+
+This is structured founder-managed prompt context, not vector RAG.
+
+Example:
 
 ```bash
-# Create test database first
-createdb lyfshilp_test
+python3 scripts/seed_system_prompt.py
+python3 scripts/seed_system_prompt.py --overwrite
+```
 
+## Testing
+
+```bash
+createdb lyfshilp_test
 pytest -v
 ```
 
----
+## Deployment Notes
 
-## Connection Pooling
+- Render backend service: use `render.yaml` as the source of truth.
+- Frontend origin must be added to `ALLOWED_ORIGINS`.
+- Google OAuth redirect URI must match the deployed frontend callback URL exactly.
+- Uploaded files are stored under `UPLOAD_DIR` and served by FastAPI at `/uploads`.
+- Founder Library uploads are stored under `UPLOAD_DIR/library/...` and parsed into markdown for prompt matching.
 
-Configured in `app/core/config.py` and applied in `app/db/session.py`:
+## Design Notes
 
-| Setting | Default | Purpose |
-|---|---|---|
-| `DB_POOL_SIZE` | 10 | Persistent connections |
-| `DB_MAX_OVERFLOW` | 20 | Extra connections under load |
-| `DB_POOL_TIMEOUT` | 30s | Wait before raising error |
-| `DB_POOL_RECYCLE` | 1800s | Recycle connections (avoids stale) |
-| `DB_POOL_PRE_PING` | true | Validate before checkout |
-
----
-
-## OOP Design Patterns
-
-- **Repository Pattern** — `BaseRepository[T]` provides typed generic CRUD; domain repos extend it with query methods.
-- **Service Layer** — `AuthService`, `SubmissionService`, `AIService`, `FileService`, `SystemPromptService` each own a single business domain.
-- **Dependency Injection** — FastAPI `Depends()` wires session + current user into every endpoint; services receive the session in `__init__`.
-- **Exception Hierarchy** — `AppException` → `AuthenticationError`, `ForbiddenError`, `NotFoundError`, etc., all caught by global handlers.
-- **Config as Singleton** — `@lru_cache` on `get_settings()` ensures a single `Settings` instance across the process.
+- Repository pattern for data access.
+- Service layer for business logic.
+- FastAPI dependency injection for DB sessions and auth.
+- Centralized exception handling.
+- Cached settings singleton via `pydantic-settings`.

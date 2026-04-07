@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import MySubmissions from './pages/MySubmissions';
 import UsersPage from './pages/Users';
 import DocumentGuidancePage from './pages/DocumentGuidance';
+import LibraryPage from './pages/Library';
 import ProfilePage from './pages/Profile';
 import SystemPromptPage from './pages/SystemPrompt';
 import AuditLogPage from './pages/AuditLog';
@@ -31,6 +32,7 @@ function AppShell() {
     '/submissions': 'My Submissions',
     '/users': 'People',
     '/document-guidance': 'Document Guidance',
+    '/library': 'Library',
     '/profile': 'My Profile',
     '/admin/system-prompt': 'Brand Voice',
     '/admin/audit-log': 'Audit Log',
@@ -66,6 +68,7 @@ function AppShell() {
             <Route path="/review" element={isFounder ? <Dashboard /> : <Navigate to="/submissions" replace />} />
             <Route path="/users" element={isFounder ? <UsersPage /> : <Navigate to="/submissions" replace />} />
             <Route path="/document-guidance" element={isFounder ? <DocumentGuidancePage /> : <Navigate to="/submissions" replace />} />
+            <Route path="/library" element={isFounder ? <LibraryPage /> : <Navigate to="/submissions" replace />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/submissions" element={<MySubmissions />} />
             <Route path="/compose" element={canCompose ? (

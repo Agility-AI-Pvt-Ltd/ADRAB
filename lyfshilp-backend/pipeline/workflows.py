@@ -43,6 +43,8 @@ class SubmissionWorkflowService:
                 "doc_type": request.doc_type,
                 "stakeholder": request.stakeholder.value,
                 "context_form_data": request.context_form_data,
+                "llm_mode": request.llm_mode,
+                "has_thinking_instructions": bool(request.thinking_instructions),
             },
         )
         state = await self._draft_graph.ainvoke(
@@ -50,6 +52,8 @@ class SubmissionWorkflowService:
                 "doc_type": request.doc_type,
                 "stakeholder": request.stakeholder,
                 "context_form_data": request.context_form_data,
+                "llm_mode": request.llm_mode,
+                "thinking_instructions": request.thinking_instructions,
                 "workflow_trace": trace,
             }
         )
@@ -95,6 +99,7 @@ class SubmissionWorkflowService:
                 "action": request.action,
                 "content_preview": request.content[:500],
                 "human_input": request.human_input,
+                "thinking_instructions": request.thinking_instructions,
             },
         )
         state = await self._refinement_graph.ainvoke({"request": request, "workflow_trace": trace})
@@ -200,6 +205,8 @@ class SubmissionWorkflowService:
             "workflow_stage": WorkflowStage.DETERMINISTIC_CONTEXT_READY,
             "workflow_memory": {
                 "deterministic_context": context.deterministic_context,
+                "llm_mode": state.get("llm_mode", "guided"),
+                "thinking_instructions": state.get("thinking_instructions"),
                 "trace": trace,
                 "events": [
                     {
@@ -239,6 +246,8 @@ class SubmissionWorkflowService:
             stakeholder=state["stakeholder"],
             context=state["context_form_data"],
             guidance=state["prompt_context"],
+            llm_mode=state.get("llm_mode", "guided"),
+            thinking_instructions=state.get("thinking_instructions"),
         )
         memory = dict(state["workflow_memory"])
         events = list(memory.get("events") or [])
@@ -423,6 +432,10 @@ class SubmissionWorkflowService:
                 for item in request.suggestions
             )
             regenerated_prompt = f"{regenerated_prompt}\n- Suggestions to use:\n{suggestion_lines}"
+        if request.thinking_instructions:
+            regenerated_prompt = (
+                f"{regenerated_prompt}\n- Thinking instructions: {request.thinking_instructions.strip()}"
+            )
         memory = dict(state["workflow_memory"])
         set_context_block(state["workflow_trace"], "regenerated_prompt", regenerated_prompt)
         events = list(memory.get("events") or [])
@@ -435,6 +448,7 @@ class SubmissionWorkflowService:
         )
         memory["events"] = events
         memory["human_input"] = request.human_input
+        memory["thinking_instructions"] = request.thinking_instructions
         return {
             "regenerated_prompt": regenerated_prompt,
             "workflow_stage": WorkflowStage.AWAITING_HUMAN_INPUT,
@@ -448,6 +462,7 @@ class SubmissionWorkflowService:
             action=state["request"].action,
             doc_type=state["request"].doc_type,
             stakeholder=state["request"].stakeholder,
+            thinking_instructions=state["request"].thinking_instructions,
         )
         guidance = "\n\n".join(
             block for block in (state["prompt_context"], state["regenerated_prompt"]) if block

@@ -50,3 +50,32 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GoogleDriveAuthUrlResponse(BaseModel):
+    url: str
+    state: str
+
+
+class GoogleDriveConnectionResponse(BaseModel):
+    connected: bool
+    google_email: Optional[str] = None
+    folder_id: Optional[str] = None
+    scopes: Optional[str] = None
+    connected_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class GoogleDriveCallbackRequest(BaseModel):
+    code: str
+    state: Optional[str] = None
+
+
+class GoogleDriveFileResponse(BaseModel):
+    id: str
+    name: str
+    mime_type: str
+    web_view_link: Optional[str] = None
+    modified_time: Optional[str] = None
+    size_bytes: Optional[int] = None

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str  # Required — set in .env e.g. https://adrab.vercel.app/auth/google/callback
     FRONTEND_URL: str  # Required — set in .env e.g. https://adrab.vercel.app
+    GOOGLE_DRIVE_FOLDER_ID: str = ""
 
     # ── PostgreSQL (with async + pooling) ─────────────────────────────────────
     DATABASE_URL_OVERRIDE: Optional[str] = Field(default=None, validation_alias="DATABASE_URL")
@@ -101,6 +102,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 2000
+    LLAMA_CLOUD_API_KEY: str = ""
 
     # ── File Storage (local disk) ─────────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"

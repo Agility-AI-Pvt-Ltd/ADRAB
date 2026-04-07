@@ -7,6 +7,7 @@ All auth logic lives here; the API layer is thin.
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 import httpx
 from sqlalchemy import select, update
@@ -117,7 +118,7 @@ class AuthService:
             "access_type": "offline",
             "prompt": "select_account",
         }
-        query = "&".join(f"{k}={v}" for k, v in params.items())
+        query = urlencode(params)
         return f"{GOOGLE_AUTH_URL}?{query}"
 
     async def handle_google_callback(self, code: str) -> TokenResponse:

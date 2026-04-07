@@ -67,6 +67,8 @@ class SubmissionService:
                 doc_type=request.doc_type,
                 stakeholder=request.stakeholder,
                 context_form_data=request.context_form_data.fields,
+                llm_mode=request.llm_mode,
+                thinking_instructions=request.thinking_instructions,
             )
         )
         return DraftWorkflowResponse(

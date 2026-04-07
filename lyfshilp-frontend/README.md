@@ -44,7 +44,8 @@ lyfshilp-frontend/
         ├── Dashboard.tsx       # Founder dashboard with stats + review table
         ├── MySubmissions.tsx   # Team member submissions list
         ├── SystemPrompt.tsx    # Admin: edit AI brand voice
-        └── AuditLog.tsx        # Admin: paginated audit log
+        ├── AuditLog.tsx        # Admin: paginated audit log
+        └── Library.tsx         # Founder: upload and manage prompt knowledge base
 ```
 
 ---
@@ -98,6 +99,7 @@ npm run build
 - Review queue: approve / approve with edits / reject
 - Leave founder notes; AI auto-generates rejection notes
 - Edit AI brand voice system prompt (takes effect immediately)
+- Manage the Founder Library: upload PDF/DOCX/TXT/MD content, edit markdown, and activate/deactivate knowledge items
 - View full audit log with action + resource + IP + timestamp
 
 ---
@@ -114,3 +116,11 @@ Google OAuth flow:
 2. User is redirected to Google consent screen
 3. Google redirects to `/auth/google/callback?code=...`
 4. Frontend `GoogleCallback` page exchanges code for tokens via `POST /auth/google/callback`
+
+Founder Library flow:
+1. Founder opens `/library`
+2. Founder uploads a source file or pastes markdown
+3. Backend parses the source and stores the markdown in Postgres
+4. Founder opens the saved item and runs metadata analysis
+5. If the source is ambiguous, the UI can show clarifying questions before activation
+6. Matching items are inserted into draft and review context when the doc type and stakeholder match

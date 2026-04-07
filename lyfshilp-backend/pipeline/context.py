@@ -15,15 +15,17 @@ from services.document_guidance_service import DocumentGuidanceService
 from services.emoji_guidance_service import EmojiGuidanceService
 from services.few_shot_example_service import FewShotExampleService
 from services.knowledge_snippet_service import KnowledgeSnippetService
+from services.knowledge_library_service import KnowledgeLibraryService
 from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.system_prompt_service import SystemPromptService
-from pipeline.tools.rag import SubmissionContextRetriever
+from pipeline.tools.submission_context_assembler import SubmissionContextAssembler
 
 
 @dataclass(slots=True)
 class PromptContextBundle:
     deterministic_context: str
     enrichment_context: str = ""
+    library_context: str = ""
     review_context: str = ""
     trace: dict[str, Any] | None = None
 
@@ -34,6 +36,7 @@ class PromptContextBundle:
             for block in (
                 self.deterministic_context,
                 self.enrichment_context,
+                self.library_context,
                 self.review_context,
             )
             if block
@@ -46,12 +49,13 @@ class SubmissionPromptContextService:
     def __init__(self, session: AsyncSession) -> None:
         self._prompt_service = SystemPromptService(session)
         self._knowledge_snippet_service = KnowledgeSnippetService(session)
+        self._knowledge_library_service = KnowledgeLibraryService(session)
         self._stakeholder_guidance_service = StakeholderGuidanceService(session)
         self._document_guidance_service = DocumentGuidanceService(session)
         self._emoji_guidance_service = EmojiGuidanceService(session)
         self._few_shot_example_service = FewShotExampleService(session)
         self._ai_review_guidance_service = AIReviewGuidanceService(session)
-        self._context_retriever = SubmissionContextRetriever(
+        self._context_assembler = SubmissionContextAssembler(
             document_guidance_service=self._document_guidance_service,
             emoji_guidance_service=self._emoji_guidance_service,
             few_shot_example_service=self._few_shot_example_service,
@@ -146,14 +150,30 @@ class SubmissionPromptContextService:
         *,
         trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
-        retrieved = await self._context_retriever.retrieve(
+        retrieved = await self._context_assembler.assemble(
             doc_type,
             stakeholder,
             trace=trace,
         )
+        library_context = await self._knowledge_library_service.render_prompt_block(doc_type, stakeholder)
+        if trace is not None:
+            append_db_query(
+                trace,
+                service="KnowledgeLibraryService",
+                query="render_prompt_block",
+                filters={"doc_type": doc_type, "stakeholder": stakeholder.value},
+                result={"has_context": bool(library_context)},
+            )
+            set_context_block(
+                trace,
+                "knowledge_library",
+                library_context,
+                metadata={"doc_type": doc_type, "stakeholder": stakeholder.value},
+            )
         return PromptContextBundle(
             deterministic_context=retrieved.deterministic_context,
             enrichment_context=retrieved.enrichment_context,
+            library_context=library_context,
             trace=retrieved.trace,
         )
 
@@ -164,15 +184,31 @@ class SubmissionPromptContextService:
         *,
         trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
-        retrieved = await self._context_retriever.retrieve(
+        retrieved = await self._context_assembler.assemble(
             doc_type,
             stakeholder,
             include_review_guidance=True,
             trace=trace,
         )
+        library_context = await self._knowledge_library_service.render_prompt_block(doc_type, stakeholder)
+        if trace is not None:
+            append_db_query(
+                trace,
+                service="KnowledgeLibraryService",
+                query="render_prompt_block",
+                filters={"doc_type": doc_type, "stakeholder": stakeholder.value},
+                result={"has_context": bool(library_context)},
+            )
+            set_context_block(
+                trace,
+                "knowledge_library",
+                library_context,
+                metadata={"doc_type": doc_type, "stakeholder": stakeholder.value},
+            )
         return PromptContextBundle(
             deterministic_context=retrieved.deterministic_context,
             enrichment_context=retrieved.enrichment_context,
+            library_context=library_context,
             review_context=retrieved.review_context,
             trace=retrieved.trace,
         )

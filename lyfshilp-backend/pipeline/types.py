@@ -15,6 +15,8 @@ class DraftGenerationInput:
     doc_type: str
     stakeholder: Stakeholder
     context_form_data: dict[str, Any]
+    llm_mode: str = "guided"
+    thinking_instructions: str | None = None
 
 
 @dataclass(slots=True)
@@ -52,6 +54,8 @@ class DraftGenerationState(TypedDict, total=False):
     doc_type: str
     stakeholder: Stakeholder
     context_form_data: dict[str, Any]
+    llm_mode: str
+    thinking_instructions: str | None
     ai_service: AIService
     deterministic_context: str
     enrichment_context: str
@@ -82,6 +86,7 @@ class DraftRefinementState(TypedDict, total=False):
     deterministic_context: str
     enrichment_context: str
     prompt_context: str
+    thinking_instructions: str | None
     regenerated_prompt: str
     refined_draft: str
     workflow_trace: dict[str, Any]

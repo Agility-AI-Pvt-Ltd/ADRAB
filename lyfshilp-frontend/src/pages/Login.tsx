@@ -30,6 +30,8 @@ export default function Login() {
     try {
       const { authApi } = await import('../api');
       const { data } = await authApi.getGoogleUrl();
+      sessionStorage.setItem('google_oauth_flow', 'login');
+      sessionStorage.setItem('google_oauth_state', data.state);
       window.location.href = data.url;
     } catch {
       setError('Could not initiate Google login');

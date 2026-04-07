@@ -110,6 +110,61 @@ async def test_analyze_draft(client: AsyncClient, team_member):
 
 
 @pytest.mark.asyncio
+async def test_generate_draft_can_run_autonomously_with_thinking_instructions(client: AsyncClient, team_member):
+    with patch(
+        "services.ai_service.AIService.generate_draft",
+        new_callable=AsyncMock,
+        return_value="[autonomous draft]",
+    ) as mock_generate:
+        resp = await client.post(
+            "/api/v1/submissions/generate-draft",
+            json={
+                "doc_type": "cold_email",
+                "stakeholder": "principal",
+                "context_form_data": {"fields": {"recipient_name_designation": "Dr Priya Sharma"}},
+                "llm_mode": "autonomous",
+                "thinking_instructions": "Think like a senior editor and do not ask for clarification.",
+            },
+            headers=auth_headers(team_member),
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["draft"] == "[autonomous draft]"
+    assert data["workflow_memory"]["llm_mode"] == "autonomous"
+    assert data["workflow_memory"]["thinking_instructions"] == "Think like a senior editor and do not ask for clarification."
+    mock_generate.assert_awaited()
+    assert mock_generate.await_args.kwargs["llm_mode"] == "autonomous"
+    assert mock_generate.await_args.kwargs["thinking_instructions"] == "Think like a senior editor and do not ask for clarification."
+
+
+@pytest.mark.asyncio
+async def test_refine_draft_accepts_thinking_instructions(client: AsyncClient, team_member):
+    with patch(
+        "services.ai_service.AIService.refine_draft",
+        new_callable=AsyncMock,
+        return_value="[refined draft]",
+    ) as mock_refine:
+        resp = await client.post(
+            "/api/v1/submissions/refine-draft",
+            json={
+                "content": "Please rewrite this sentence.",
+                "action": "regenerate",
+                "doc_type": "cold_email",
+                "stakeholder": "principal",
+                "thinking_instructions": "Keep the tone calm and practical.",
+            },
+            headers=auth_headers(team_member),
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["draft"] == "[refined draft]"
+    mock_refine.assert_awaited()
+    assert mock_refine.await_args.kwargs["request"].thinking_instructions == "Keep the tone calm and practical."
+
+
+@pytest.mark.asyncio
 async def test_existing_draft_precheck_is_reused_on_submit(client: AsyncClient, team_member):
     create_resp = await client.post(
         "/api/v1/submissions/",

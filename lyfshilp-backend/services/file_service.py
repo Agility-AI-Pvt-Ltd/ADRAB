@@ -21,6 +21,8 @@ logger = get_logger(__name__)
 ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/markdown",
 }
 MAX_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
@@ -34,7 +36,13 @@ class FileService:
 
     # ── Upload ────────────────────────────────────────────────────────────────
 
-    async def upload(self, file: UploadFile, user_id: uuid.UUID) -> tuple[str, str]:
+    async def upload(
+        self,
+        file: UploadFile,
+        user_id: uuid.UUID,
+        *,
+        namespace: str = "submissions",
+    ) -> tuple[str, str]:
         """
         Validate, upload to local storage, and return (file_url, original_filename).
         Raises ValidationError / StorageError on failure.
@@ -47,7 +55,7 @@ class FileService:
             )
 
         ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "bin"
-        relative_path = Path("submissions") / str(user_id) / f"{uuid.uuid4()}.{ext}"
+        relative_path = Path(namespace) / str(user_id) / f"{uuid.uuid4()}.{ext}"
         destination = self._storage_root / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -77,6 +85,8 @@ class FileService:
                 return FileService._extract_pdf(content)
             elif "wordprocessingml" in mime:
                 return FileService._extract_docx(content)
+            elif mime.startswith("text/") or mime == "application/json":
+                return content.decode("utf-8", errors="ignore").strip()
         except Exception as exc:
             logger.warning("Text extraction failed", extra={"error": str(exc)})
         return None
@@ -120,4 +130,4 @@ class FileService:
             raise ValidationError("Uploaded file has no filename.")
         mime = file.content_type or mimetypes.guess_type(file.filename)[0] or ""
         if mime not in ALLOWED_MIME_TYPES:
-            raise ValidationError("Only .pdf and .docx files are accepted.")
+            raise ValidationError("Only .pdf, .docx, .txt, and .md files are accepted.")

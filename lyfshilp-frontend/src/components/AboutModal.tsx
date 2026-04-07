@@ -54,7 +54,7 @@ export default function AboutModal({ onClose }: Props) {
 
         <div>
            <div className="detail-section-title" style={{ marginBottom: 10 }}>AI Integration</div>
-           <div style={{ fontSize: 13, color: 'var(--ink-mid)', lineHeight: 1.6, background: '#f9f9fa', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
+           <div style={{ fontSize: 13, color: 'var(--ink-mid)', lineHeight: 1.6, background: 'var(--surface)', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
              The system utilizes specialized Multi-LLM pipelines for rigorous document review against dynamic Brand Voice and stakeholder configurations.
            </div>
         </div>

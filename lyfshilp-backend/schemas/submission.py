@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -63,6 +63,8 @@ class GenerateDraftRequest(BaseModel):
     doc_type: str
     stakeholder: Stakeholder
     context_form_data: ContextFormData
+    llm_mode: Literal["autonomous", "guided"] = "guided"
+    thinking_instructions: Optional[str] = None
 
 
 class DraftWorkflowResponse(BaseModel):
@@ -77,6 +79,7 @@ class RefineDraftRequest(BaseModel):
     doc_type: str
     stakeholder: Stakeholder
     human_input: Optional[str] = None
+    thinking_instructions: Optional[str] = None
     suggestions: Optional[List[AISuggestion]] = None
 
 

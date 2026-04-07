@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
 import { adminApi, submissionsApi } from '../api';
-import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse } from '../types';
+import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse, LLMMode } from '../types';
 
 interface ChatMessage {
   role: 'user' | 'ai';
@@ -143,6 +143,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>('type');
   const [docType, setDocType] = useState<DocumentType | null>(null);
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
+  const [llmMode, setLlmMode] = useState<LLMMode>('guided');
+  const [thinkingInstructions, setThinkingInstructions] = useState('');
   const [contextFields, setContextFields] = useState<Record<string, string>>({});
   const [customPromptText, setCustomPromptText] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -165,6 +167,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   // Suggestions from the most recent AI message
   const lastAiMsg = [...chatMessages].reverse().find(m => m.role === 'ai');
   const lastSuggestions = lastAiMsg?.analysis?.suggestions ?? [];
+  const trimmedThinkingInstructions = thinkingInstructions.trim();
 
   function renderTraceSection(title: string, workflowMemory: any) {
     const trace = workflowMemory?.trace;
@@ -254,9 +257,17 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       setChatMessages((prev) => [...prev, { role: 'user', content: input }]);
       setGenerating(true);
       try {
-        const { data } = await submissionsApi.generateDraft(docType, stakeholder, {
-          "User's Complete Custom Prompt": input
-        });
+        const { data } = await submissionsApi.generateDraft(
+          docType,
+          stakeholder,
+          {
+            "User's Complete Custom Prompt": input,
+          },
+          {
+            llm_mode: llmMode,
+            thinking_instructions: trimmedThinkingInstructions || undefined,
+          }
+        );
         const resultDraft = data.draft;
         setBaseDraft(resultDraft);
         const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
@@ -294,7 +305,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
         human_input += 'IMPORTANT: Apply ONLY the instruction above. Do NOT apply any other suggestions or improvements not explicitly listed here.';
       }
 
-      const { data } = await submissionsApi.refineDraft(baseDraft, 'regenerate', docType, stakeholder, human_input);
+      const { data } = await submissionsApi.refineDraft(baseDraft, 'regenerate', docType, stakeholder, {
+        human_input,
+        thinking_instructions: trimmedThinkingInstructions || undefined,
+      });
       const resultDraft = data.draft;
       const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
       setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis, draftTrace: data.workflow_memory }]);
@@ -357,7 +371,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
         ? { "User's Complete Custom Prompt": customPromptText }
         : contextFields;
 
-      const { data } = await submissionsApi.generateDraft(docType, stakeholder, formData);
+      const { data } = await submissionsApi.generateDraft(docType, stakeholder, formData, {
+        llm_mode: llmMode,
+        thinking_instructions: trimmedThinkingInstructions || undefined,
+      });
       setDraft(data.draft);
       setStep('draft');
     } catch (e: any) {
@@ -405,7 +422,9 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     if (!docType || !stakeholder) return;
     setRefining(true);
     try {
-      const { data } = await submissionsApi.refineDraft(draft, action, docType, stakeholder);
+      const { data } = await submissionsApi.refineDraft(draft, action, docType, stakeholder, {
+        thinking_instructions: trimmedThinkingInstructions || undefined,
+      });
       setDraft(data.draft);
     } catch (e: any) {
       toast('error', e.response?.data?.detail ?? 'Refinement failed');
@@ -532,6 +551,9 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             <span style={{ fontSize: 13, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
               → {stakeholder}
             </span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: llmMode === 'autonomous' ? 'var(--green-800)' : 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {llmMode} mode
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, flex: 1, alignContent: 'start' }}>
@@ -584,28 +606,75 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   if (step === 'prompt_method') {
     return (
       <Modal title="Compose Method" subtitle="How would you like to create this document?" onClose={onClose} size="full">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 40 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 24 }}>
+          <div style={{ width: '100%', maxWidth: 1240, border: '1px solid var(--border)', borderRadius: 18, background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)', padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--ink-mid)' }}>
+                  AI Thinking Instructions
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
+                  Optionally tell the model exactly what to prioritize, avoid, and how to reason.
+                </div>
+              </div>
+              <div style={{ display: 'inline-flex', background: 'var(--surface)', borderRadius: 999, padding: 4, border: '1px solid var(--border)' }}>
+                <button
+                  className={`btn btn-sm ${llmMode === 'autonomous' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ borderRadius: 999 }}
+                  onClick={() => setLlmMode('autonomous')}
+                >
+                  Autonomous
+                </button>
+                <button
+                  className={`btn btn-sm ${llmMode === 'guided' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ borderRadius: 999 }}
+                  onClick={() => setLlmMode('guided')}
+                >
+                  Guided
+                </button>
+              </div>
+            </div>
+            <AutoTextarea
+              value={thinkingInstructions}
+              onChange={e => setThinkingInstructions(e.target.value)}
+              placeholder="Example: Think like a senior Lyfshilp editor. Lead with the outcome, keep sentences short, avoid salesy phrasing, and never ask me for confirmation unless you truly need a missing fact."
+              minHeight={110}
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+            />
+            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+              {llmMode === 'autonomous'
+                ? 'Autonomous mode means the AI will move forward using best judgment and the current context.'
+                : 'Guided mode means the AI will follow your detailed directions and keep your reasoning notes in the prompt.'}
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 24, width: '100%', maxWidth: 1240 }}>
             {/* Option 1: Custom Prompt */}
             <div
               className="method-card"
               style={{ padding: 32, border: '1px solid var(--border)', borderRadius: 16, cursor: 'pointer', background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
-              onClick={() => setStep('custom_prompt')}
+              onClick={() => {
+                setLlmMode('guided');
+                setStep('custom_prompt');
+              }}
             >
               <div style={{ fontSize: 24, marginBottom: 16 }}>✍️</div>
-              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Provide Complete Prompt</h3>
-              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Write or paste your own exact prompt for the AI to follow. We'll combine it with your Brand Voice rules.</p>
+              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Guided Prompt</h3>
+              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Write exactly how the AI should think, then chat with it to refine the draft.</p>
             </div>
 
             {/* Option 2: Default Context Form */}
             <div
               className="method-card"
               style={{ padding: 32, border: '1px solid var(--border)', borderRadius: 16, cursor: 'pointer', background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
-              onClick={() => setStep('context')}
+              onClick={() => {
+                setLlmMode('autonomous');
+                setStep('context');
+              }}
             >
               <div style={{ fontSize: 24, marginBottom: 16 }}>📋</div>
-              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Use Guided Form</h3>
-              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Answer a few quick questions (e.g., objective, recipient). We will construct the perfect AI prompt automatically.</p>
+              <h3 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Autonomous Draft</h3>
+              <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>Answer a few quick questions and let the AI draft independently without waiting for human feedback.</p>
             </div>
 
             <div
@@ -765,20 +834,52 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     // Step: Custom Prompt Editor
   if (step === 'custom_prompt') {
     return (
-      <Modal title="Interactive Compose" subtitle="Chat with AI to produce and refine your document" onClose={onClose} size="full">
+      <Modal title="Interactive Compose" subtitle="Tell the AI how to think, then chat to refine the draft" onClose={onClose} size="full">
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
             {docType && <DocTypeChip type={docType} />}
             <span style={{ fontSize: 13, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
               → {stakeholder}
             </span>
+            <button
+              className={`btn btn-sm ${llmMode === 'autonomous' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setLlmMode('autonomous')}
+              style={{ marginLeft: 'auto', borderRadius: 999 }}
+            >
+              Autonomous
+            </button>
+            <button
+              className={`btn btn-sm ${llmMode === 'guided' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setLlmMode('guided')}
+              style={{ borderRadius: 999 }}
+            >
+              Guided
+            </button>
+          </div>
+
+          <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 14, padding: 16, background: 'var(--white)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Thinking Instructions
+            </div>
+            <AutoTextarea
+              value={thinkingInstructions}
+              onChange={e => setThinkingInstructions(e.target.value)}
+              placeholder="Tell the AI exactly what to prioritize, what to avoid, and how to reason about this draft."
+              minHeight={84}
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+              {trimmedThinkingInstructions
+                ? 'These instructions will be prepended to every generation and refinement request in this session.'
+                : 'Leave this blank for autonomous drafting with best-effort assumptions.'}
+            </div>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', marginBottom: 20, padding: '10px 4px', display: 'flex', flexDirection: 'column', gap: 24 }}>
             {chatMessages.length === 0 && (
               <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--ink-soft)' }}>
                 <div style={{ fontSize: 32, marginBottom: 12 }}>✨</div>
-                <div>Send your detailed prompt below to begin generating.</div>
+                <div>Send your prompt below to begin generating. The AI will follow your thinking notes if you add them.</div>
               </div>
             )}
             {chatMessages.map((msg, i) => (
@@ -948,7 +1049,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                   sendChatMessage();
                 }
               }}
-              placeholder={chatMessages.length === 0 ? "Paste your complete prompt here (Press Enter to send)..." : "Ask AI to change something..."}
+              placeholder={chatMessages.length === 0 ? "Paste your complete prompt or instruction here (Press Enter to send)..." : "Ask AI to change something..."}
               disabled={generating || pendingChatInput !== null}
             />
             <button

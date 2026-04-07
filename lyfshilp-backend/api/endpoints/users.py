@@ -10,6 +10,12 @@ from core.exceptions import ForbiddenError, ValidationError
 from core.security import hash_password, verify_password
 from db.repositories.user_repository import UserRepository
 from schemas.user import (
+    GoogleDriveAuthUrlResponse,
+    GoogleDriveCallbackRequest,
+    GoogleDriveConnectionResponse,
+    GoogleDriveFileResponse,
+)
+from schemas.user import (
     ChangePasswordRequest,
     DeleteAccountRequest,
     SelfUserUpdate,
@@ -18,6 +24,7 @@ from schemas.user import (
     UserUpdate,
 )
 from services.auth_service import AuthService
+from services.google_drive_service import GoogleDriveService
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -40,6 +47,49 @@ async def create_founder_account(body: UserCreate, current_user: CurrentUser, se
 async def get_my_profile(current_user: CurrentUser):
     """Return the authenticated user's own profile."""
     return current_user
+
+
+@router.get("/me/google-drive", response_model=GoogleDriveConnectionResponse)
+async def get_my_google_drive(current_user: CurrentUser, session: DBSession):
+    service = GoogleDriveService(session)
+    return await service.get_connection_status(current_user.id)
+
+
+@router.get("/me/google-drive/auth", response_model=GoogleDriveAuthUrlResponse, dependencies=[FounderOnly])
+async def get_my_google_drive_auth(current_user: CurrentUser, session: DBSession):
+    service = GoogleDriveService(session)
+    import secrets
+
+    state = f"drive-link:{secrets.token_urlsafe(16)}"
+    return {"url": service.get_auth_url(state), "state": state}
+
+
+@router.post("/me/google-drive/callback", response_model=GoogleDriveConnectionResponse, dependencies=[FounderOnly])
+async def google_drive_callback(body: GoogleDriveCallbackRequest, current_user: CurrentUser, session: DBSession):
+    service = GoogleDriveService(session)
+    await service.connect_user(current_user=current_user, code=body.code)
+    return await service.get_connection_status(current_user.id)
+
+
+@router.get("/me/google-drive/files", response_model=list[GoogleDriveFileResponse], dependencies=[FounderOnly])
+async def get_my_google_drive_files(
+    current_user: CurrentUser,
+    session: DBSession,
+    q: str | None = None,
+):
+    service = GoogleDriveService(session)
+    files = await service.list_files(current_user=current_user, query=q)
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "mime_type": item.mime_type,
+            "web_view_link": item.web_view_link,
+            "modified_time": item.modified_time,
+            "size_bytes": item.size_bytes,
+        }
+        for item in files
+    ]
 
 
 @router.patch("/me/profile", response_model=UserResponse)

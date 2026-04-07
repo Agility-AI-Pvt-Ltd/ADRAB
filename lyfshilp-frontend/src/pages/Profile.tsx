@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usersApi } from '../api';
 import { Avatar, useToast } from '../components/shared';
@@ -7,6 +8,8 @@ import type { TeamDepartment } from '../types';
 export default function ProfilePage() {
   const { user, refreshUser, logout } = useAuth();
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   if (!user) return null;
 
   const currentUser = user;
@@ -19,6 +22,32 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [googleDriveStatus, setGoogleDriveStatus] = useState<{
+    connected: boolean;
+    google_email: string | null;
+    folder_id: string | null;
+    scopes: string | null;
+    connected_at: string | null;
+  } | null>(null);
+  const [connectingDrive, setConnectingDrive] = useState(false);
+
+  useEffect(() => {
+    if (currentUser.role !== 'founder' && currentUser.role !== 'admin') {
+      return;
+    }
+    usersApi.googleDriveStatus()
+      .then(({ data }) => setGoogleDriveStatus(data))
+      .catch(() => setGoogleDriveStatus(null));
+  }, [currentUser.role]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('drive') === 'connected') {
+      toast('success', 'Google Drive connected');
+      navigate('/profile', { replace: true });
+      usersApi.googleDriveStatus().then(({ data }) => setGoogleDriveStatus(data)).catch(() => {});
+    }
+  }, [location.search, navigate, toast]);
 
   async function saveProfile() {
     setSaving(true);
@@ -59,6 +88,19 @@ export default function ProfilePage() {
     } catch (e: any) {
       toast('error', e.response?.data?.detail ?? 'Could not delete account');
       setDeleting(false);
+    }
+  }
+
+  async function connectGoogleDrive() {
+    setConnectingDrive(true);
+    try {
+      const { data } = await usersApi.googleDriveAuthUrl();
+      sessionStorage.setItem('google_oauth_flow', 'drive-link');
+      sessionStorage.setItem('google_oauth_state', data.state);
+      window.location.href = data.url;
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not start Google Drive connection');
+      setConnectingDrive(false);
     }
   }
 
@@ -202,6 +244,36 @@ export default function ProfilePage() {
             </button>
           </div>
         </div>
+
+        {(currentUser.role === 'founder' || currentUser.role === 'admin') && (
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title">Google Drive</div>
+            </div>
+            <div className="card-body">
+              <div className="profile-note">
+                Connect your Google account once after login so the Founder Library can store source files in Drive.
+              </div>
+              <div className="profile-meta" style={{ marginTop: 16 }}>
+                <div className="profile-meta-item">
+                  <div className="profile-meta-label">Status</div>
+                  <div className="profile-meta-value">
+                    {googleDriveStatus?.connected ? 'Connected' : 'Not connected'}
+                  </div>
+                </div>
+                <div className="profile-meta-item">
+                  <div className="profile-meta-label">Google Account</div>
+                  <div className="profile-meta-value">
+                    {googleDriveStatus?.google_email ?? 'Not linked'}
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-outline" onClick={connectGoogleDrive} disabled={connectingDrive}>
+                {connectingDrive ? 'Connecting…' : googleDriveStatus?.connected ? 'Reconnect Google Drive' : 'Connect Google Drive'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

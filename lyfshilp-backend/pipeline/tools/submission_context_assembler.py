@@ -1,4 +1,4 @@
-"""Deterministic retrieval and context enrichment for submission workflows."""
+"""Deterministic prompt context assembly for submission workflows."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ class RetrievedSubmissionContext:
     trace: dict[str, Any] | None = None
 
 
-class SubmissionContextRetriever:
-    """Collect the founder-defined context blocks used by the graph."""
+class SubmissionContextAssembler:
+    """Collect the founder-managed context blocks used by the workflow."""
 
     def __init__(
         self,
@@ -36,7 +36,7 @@ class SubmissionContextRetriever:
         self._few_shot_example_service = few_shot_example_service
         self._ai_review_guidance_service = ai_review_guidance_service
 
-    async def retrieve(
+    async def assemble(
         self,
         doc_type: str,
         stakeholder: Stakeholder,

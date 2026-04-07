@@ -13,6 +13,7 @@ const ICONS = {
   submissions: '◫',
   review: '◈',
   guidance: '☰',
+  library: '⌂',
   admin: '⚙',
   users: '◉',
   logout: '→',
@@ -120,6 +121,15 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
           >
             <span>{ICONS.compose}</span>
             Compose
+          </NavLink>
+        )}
+        {isFounder && (
+          <NavLink
+            to="/library"
+            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+          >
+            <span>{ICONS.library}</span>
+            Library
           </NavLink>
         )}
         {!isFounder && (

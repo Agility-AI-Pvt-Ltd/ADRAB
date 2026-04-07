@@ -1,12 +1,14 @@
 import axios from 'axios';
 import type {
   TokenResponse, User, Submission, DashboardData,
-  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse, DraftWorkflowResponse
+  SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse, DraftWorkflowResponse, KnowledgeLibraryItem,
+  LLMMode,
+  GoogleDriveAuthUrl, GoogleDriveConnectionStatus, GoogleDriveFile
 } from '../types';
 
-const BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
+export const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
-const client = axios.create({ baseURL: BASE });
+const client = axios.create({ baseURL: API_BASE });
 
 // Attach token
 client.interceptors.request.use((config) => {
@@ -23,7 +25,7 @@ client.interceptors.response.use(
       const rt = localStorage.getItem('refresh_token');
       if (rt) {
         try {
-          const { data } = await axios.post<TokenResponse>(`${BASE}/auth/refresh`, { refresh_token: rt });
+          const { data } = await axios.post<TokenResponse>(`${API_BASE}/auth/refresh`, { refresh_token: rt });
           localStorage.setItem('access_token', data.access_token);
           localStorage.setItem('refresh_token', data.refresh_token);
           err.config.headers.Authorization = `Bearer ${data.access_token}`;
@@ -67,9 +69,18 @@ export const authApi = {
 export const submissionsApi = {
   documentGuidance: () => client.get<DocumentGuidance[]>('/submissions/document-guidance'),
 
-  generateDraft: (doc_type: DocumentType, stakeholder: Stakeholder, fields: Record<string, string>) =>
+  generateDraft: (
+    doc_type: DocumentType,
+    stakeholder: Stakeholder,
+    fields: Record<string, string>,
+    options?: { llm_mode?: LLMMode; thinking_instructions?: string }
+  ) =>
     client.post<DraftWorkflowResponse>('/submissions/generate-draft', {
-      doc_type, stakeholder, context_form_data: { fields }
+      doc_type,
+      stakeholder,
+      context_form_data: { fields },
+      llm_mode: options?.llm_mode ?? 'guided',
+      thinking_instructions: options?.thinking_instructions,
     }),
 
   analyzeDraft: (doc_type: DocumentType, stakeholder: Stakeholder, content: string) =>
@@ -77,9 +88,20 @@ export const submissionsApi = {
       doc_type, stakeholder, content
     }),
 
-  refineDraft: (content: string, action: string, doc_type: DocumentType, stakeholder: Stakeholder, human_input?: string) =>
+  refineDraft: (
+    content: string,
+    action: string,
+    doc_type: DocumentType,
+    stakeholder: Stakeholder,
+    options?: { human_input?: string; thinking_instructions?: string }
+  ) =>
     client.post<DraftWorkflowResponse>('/submissions/refine-draft', {
-      content, action, doc_type, stakeholder, human_input
+      content,
+      action,
+      doc_type,
+      stakeholder,
+      human_input: options?.human_input,
+      thinking_instructions: options?.thinking_instructions,
     }),
 
   extractFile: (file: File) => {
@@ -156,7 +178,7 @@ export const submissionsApi = {
   }) =>
     client.patch<Submission>(`/submissions/${id}/visibility`, opts),
 
-  downloadFileUrl: (id: string) => `${BASE}/submissions/${id}/download-file`,
+  downloadFileUrl: (id: string) => `${API_BASE}/submissions/${id}/download-file`,
 
   dashboard: (filters?: { doc_type?: string; stakeholder?: string; user_id?: string }) =>
     client.get<DashboardData>('/submissions/dashboard', { params: filters }),
@@ -192,12 +214,53 @@ export const adminApi = {
     client.get<AuditLog[]>('/admin/audit-log', { params: { limit, offset } }),
 };
 
+// ── Founder Library ──────────────────────────────────────────────────────────
+export const libraryApi = {
+  list: () => client.get<KnowledgeLibraryItem[]>('/library/items'),
+  get: (id: string) => client.get<KnowledgeLibraryItem>(`/library/items/${id}`),
+  parse: (formData: FormData, options?: { archive_source?: boolean }) => {
+    if (options?.archive_source !== undefined) {
+      formData.append('archive_source', String(options.archive_source));
+    }
+    return client.post<KnowledgeLibraryItem>('/library/items/parse', formData);
+  },
+  importDrive: (body: { drive_file_id: string; title?: string | null; description?: string | null; is_active?: boolean }) =>
+    client.post<KnowledgeLibraryItem>('/library/items/import-drive', body),
+  create: (formData: FormData) =>
+    client.post<KnowledgeLibraryItem>('/library/items', formData),
+  analyze: (id: string, body?: { founder_instructions?: string | null; auto_only?: boolean }) =>
+    client.post<KnowledgeLibraryItem>(`/library/items/${id}/analyze`, body ?? {}),
+  update: (id: string, body: {
+    title: string;
+    section_key: string;
+    section_label: string;
+    description?: string | null;
+    source_file_url?: string | null;
+    content_markdown: string;
+    applies_to_doc_types?: string[] | null;
+    applies_to_stakeholders?: string[] | null;
+    tags?: string[] | null;
+    sort_order?: number;
+    is_active?: boolean;
+  }) =>
+    client.put<KnowledgeLibraryItem>(`/library/items/${id}`, body),
+  toggle: (id: string) =>
+    client.patch<KnowledgeLibraryItem>(`/library/items/${id}/toggle`),
+  delete: (id: string) =>
+    client.delete(`/library/items/${id}`),
+};
+
 // ── Users ───────────────────────────────────────────────────────────────────
 export const usersApi = {
   list: () => client.get<User[]>('/users/'),
   createFounder: (body: { name: string; email: string; password: string; department?: 'founders' | null }) =>
     client.post<User>('/users/founders', body),
   me: () => client.get<User>('/users/me/profile'),
+  googleDriveStatus: () => client.get<GoogleDriveConnectionStatus>('/users/me/google-drive'),
+  googleDriveAuthUrl: () => client.get<GoogleDriveAuthUrl>('/users/me/google-drive/auth'),
+  googleDriveFiles: (q?: string) => client.get<GoogleDriveFile[]>('/users/me/google-drive/files', { params: q ? { q } : undefined }),
+  googleDriveCallback: (code: string) =>
+    client.post<GoogleDriveConnectionStatus>('/users/me/google-drive/callback', { code }),
   updateMe: (body: Partial<Pick<User, 'name' | 'department'>>) =>
     client.patch<User>('/users/me/profile', body),
   changePassword: (current_password: string | null, new_password: string) =>

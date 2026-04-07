@@ -3,6 +3,7 @@
 export type UserRole = 'founder' | 'team_member' | 'admin';
 export type TeamDepartment = 'sales' | 'marketing' | 'counsellor' | 'academic' | 'founders';
 export type AuthProvider = 'local' | 'google';
+export type LLMMode = 'autonomous' | 'guided';
 
 export type DocumentType = string;
 
@@ -161,6 +162,88 @@ export interface AuditLog {
   metadata: Record<string, unknown> | null;
   ip_address: string | null;
   created_at: string;
+}
+
+export interface KnowledgeLibraryItem {
+  id: string;
+  title: string;
+  section_key: string;
+  section_label: string;
+  description: string | null;
+  source_kind: string;
+  source_file_url: string | null;
+  source_filename: string | null;
+  source_mime_type: string | null;
+  source_size_bytes: number | null;
+  content_markdown: string;
+  raw_text: string | null;
+  applies_to_doc_types: string[] | null;
+  applies_to_stakeholders: string[] | null;
+  tags: string[] | null;
+  sort_order: number;
+  is_active: boolean;
+  parser_provider: string | null;
+  parser_status: string | null;
+  parser_notes: string | null;
+  intake_analysis: KnowledgeLibraryAnalysis | null;
+  intake_conversation: KnowledgeLibraryConversationMessage[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeLibraryConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string | null;
+}
+
+export interface KnowledgeLibraryAnalysis {
+  content_kind: string;
+  summary: string;
+  confidence: number;
+  inferred_title: string | null;
+  inferred_section_key: string | null;
+  inferred_section_label: string | null;
+  recommended_doc_types: string[];
+  recommended_stakeholders: string[];
+  recommended_tags: string[];
+  clarifying_questions: string[];
+  needs_clarification: boolean;
+  notes: string | null;
+}
+
+export interface KnowledgeLibraryIntakeResponse {
+  source_filename: string | null;
+  source_mime_type: string | null;
+  source_size_bytes: number | null;
+  content_markdown: string;
+  raw_text: string | null;
+  parser_provider: string;
+  parser_status: string;
+  parser_notes: string | null;
+  analysis: KnowledgeLibraryAnalysis;
+}
+
+export interface GoogleDriveConnectionStatus {
+  connected: boolean;
+  google_email: string | null;
+  folder_id: string | null;
+  scopes: string | null;
+  connected_at: string | null;
+}
+
+export interface GoogleDriveAuthUrl {
+  url: string;
+  state: string;
+}
+
+export interface GoogleDriveFile {
+  id: string;
+  name: string;
+  mime_type: string;
+  web_view_link: string | null;
+  modified_time: string | null;
+  size_bytes: number | null;
 }
 
 export interface DocumentGuidance {

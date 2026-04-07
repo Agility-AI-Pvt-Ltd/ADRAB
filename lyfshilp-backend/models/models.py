@@ -257,6 +257,64 @@ class KnowledgeSnippet(Base):
 
 
 # ---------------------------------------------------------------------------
+# Knowledge Library (founder-uploaded source docs for prompt matching)
+# ---------------------------------------------------------------------------
+
+class KnowledgeLibraryItem(Base):
+    __tablename__ = "knowledge_library_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    section_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    section_label: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_kind: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")
+    source_file_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    source_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source_mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    applies_to_doc_types: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    applies_to_stakeholders: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    parser_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    parser_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    parser_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    intake_analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    intake_conversation: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Google Drive Connection (founder-linked Drive storage)
+# ---------------------------------------------------------------------------
+
+class GoogleDriveConnection(Base):
+    __tablename__ = "google_drive_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    google_sub: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    google_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False)
+    folder_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # Document Guidance (editable per-document-type writing rules)
 # ---------------------------------------------------------------------------
 
