@@ -289,6 +289,28 @@ Parsing behavior:
 
 This is structured founder-managed prompt context, not vector RAG.
 
+## Compose Usage
+
+The team-member Compose flow has two drafting modes:
+
+- `Autonomous` means the AI writes using the selected document type, stakeholder, form fields, and matched founder library context.
+- `Guided` means the AI also follows your `Thinking Instructions`, so you can tell it how to reason, what tone to use, and what to avoid.
+
+The guided compose screen has two input areas:
+
+- `Thinking Instructions` is for instructions about how the AI should think.
+- The main prompt box is for the actual draft request or follow-up edit.
+
+You can also use founder library items inside Compose:
+
+- Type `@` to see matched library suggestions.
+- Click an item to insert it as a locked mention chip.
+- Click `@all` to add all matching library items.
+- In autonomous mode, selected library items are appended as hidden context for drafting.
+- In guided mode, selected library items stay available as mention chips and are also passed into the prompt context.
+
+When a team member clicks `Submit for Review`, they must choose at least one founder approver if the submission is being routed to founders.
+
 Example:
 
 ```bash
