@@ -173,9 +173,19 @@ Respond ONLY with valid JSON matching this exact structure:
         available_doc_types: list[str] | None = None,
         available_stakeholders: list[str] | None = None,
     ) -> str:
-        context_lines = "\n".join(f"- {k}: {v}" for k, v in context.items())
+        founder_library_context = str(context.get("founder_library_context", "") or "").strip()
+        context_lines = "\n".join(
+            f"- {k}: {v}"
+            for k, v in context.items()
+            if k != "founder_library_context"
+        )
         allowed_doc_types = ", ".join(available_doc_types or []) or "None"
         allowed_stakeholders = ", ".join(available_stakeholders or []) or "None"
+        founder_library_block = (
+            f"FOUNDER LIBRARY CONTEXT\n{founder_library_context}"
+            if founder_library_context
+            else ""
+        )
         return f"""
 Generate a complete {doc_type} for the stakeholder type: {stakeholder}.
 {PromptBuilder._mode_block(llm_mode, thinking_instructions)}
@@ -187,6 +197,8 @@ ALLOWED STAKEHOLDERS IN THIS APP:
 {allowed_stakeholders}
 
 {guidance}
+
+{founder_library_block}
 
 CONTEXT PROVIDED BY THE TEAM MEMBER:
 {context_lines}
@@ -401,6 +413,19 @@ class AIService:
             available_doc_types=available_doc_types,
             available_stakeholders=available_stakeholders,
         )
+        logger.info("================ AI DRAFT GENERATION PROMPT ================")
+        user_prompt = context.get("User's Complete Custom Prompt", "")
+        if "@[" in user_prompt:
+            logger.info("✅ SUCCESS: Detected Library Tags in user prompt!")
+            logger.info("User prompt to LLM: %s", user_prompt)
+            logger.info("Library Guidance Context injected into LLM payload:")
+            logger.info("--------------------------------------------------")
+            logger.info(guidance)
+            logger.info("--------------------------------------------------")
+        else:
+            logger.info("No explicit library tags detected in prompt.")
+        logger.info("============================================================")
+
         return await self._call(prompt, operation="generate_draft")
 
     async def refine_draft(self, request: RefineDraftRequest, guidance: str) -> str:

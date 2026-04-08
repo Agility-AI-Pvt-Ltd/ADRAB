@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
-import { submissionsApi } from '../api';
-import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview, ComposeStakeholderOption } from '../types';
+import { libraryApi, submissionsApi } from '../api';
+import { cachedFetch } from '../utils/apiCache';
+import type { DocumentGuidance, DocumentType, KnowledgeLibraryItem, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview, ComposeStakeholderOption } from '../types';
 
 interface ChatMessage {
   role: 'user' | 'ai';
@@ -94,6 +95,7 @@ const EXTRA_CONTEXT_FIELD: ContextFieldDef = {
 function AutoTextarea({
   value,
   onChange,
+  onKeyDown,
   placeholder,
   readOnly,
   disabled,
@@ -104,6 +106,7 @@ function AutoTextarea({
 }: {
   value: string;
   onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   placeholder?: string;
   readOnly?: boolean;
   disabled?: boolean;
@@ -119,6 +122,7 @@ function AutoTextarea({
       className={className ?? 'form-textarea'}
       value={value}
       onChange={onChange}
+      onKeyDown={onKeyDown}
       placeholder={placeholder}
       readOnly={readOnly}
       disabled={disabled}
@@ -126,6 +130,145 @@ function AutoTextarea({
     />
   );
 }
+
+/**
+ * Filter cached library items to those that match the given doc_type + stakeholder,
+ * using the same logic as the backend: empty list = matches all.
+ */
+function filterLibraryItems(
+  items: KnowledgeLibraryItem[],
+  docType: string,
+  stakeholder: string
+): KnowledgeLibraryItem[] {
+  return items.filter(item => {
+    if (!item.is_active) return false;
+    const docTypes = item.applies_to_doc_types ?? [];
+    const stakeholders = item.applies_to_stakeholders ?? [];
+    const docOk = docTypes.length === 0 || docTypes.includes(docType);
+    const stakeholderOk = stakeholders.length === 0 || stakeholders.includes(stakeholder);
+    return docOk && stakeholderOk;
+  });
+}
+
+function getCompactLibraryExcerpt(item: KnowledgeLibraryItem, limit = 240) {
+  const source = (item.content_markdown || item.raw_text || item.description || '').trim();
+  if (!source) return item.title;
+  const compact = source.replace(/\s+/g, ' ').trim();
+  return compact.length > limit ? `${compact.slice(0, limit).trimEnd()}…` : compact;
+}
+
+function buildFounderLibraryContextBlock(items: KnowledgeLibraryItem[]) {
+  if (items.length === 0) return '';
+  return items
+    .map((item) => [
+      `Founder Library Item: ${item.title}`,
+      item.section_label ? `Section: ${item.section_label}` : null,
+      `Source: ${getCompactLibraryExcerpt(item)}`,
+    ].filter(Boolean).join('\n'))
+    .join('\n\n');
+}
+
+function getMentionState(text: string) {
+  const lastAt = text.lastIndexOf('@');
+  if (lastAt === -1) return null;
+  if (lastAt > 0 && !/\s/.test(text[lastAt - 1])) return null;
+  const fragment = text.slice(lastAt + 1);
+  if (fragment.includes('\n')) return null;
+  return {
+    start: lastAt,
+    query: fragment.trim().toLowerCase(),
+  };
+}
+
+function removeMentionQuery(text: string, mentionState: { start: number; query: string }) {
+  return `${text.slice(0, mentionState.start)}${text.slice(mentionState.start + 1 + mentionState.query.length)}`;
+}
+
+/** Compact square chip style — draggable or clickable to insert into the prompt */
+function LibraryContextChips({
+  items,
+  onInsert,
+  selectedIds,
+}: {
+  items: KnowledgeLibraryItem[];
+  onInsert?: (item: KnowledgeLibraryItem) => void;
+  selectedIds?: Set<string>;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {items.map((item) => (
+        <div
+          key={item.id}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('text/library-item-title', item.title);
+            e.dataTransfer.effectAllowed = 'copy';
+          }}
+          onClick={() => onInsert?.(item)}
+          title={`Click or drag to insert: ${item.title}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: `1px solid ${selectedIds?.has(item.id) ? 'var(--pink-500)' : 'var(--border)'}`,
+            background: selectedIds?.has(item.id) ? 'rgba(255, 101, 138, 0.10)' : 'var(--surface)',
+            cursor: 'pointer',
+            userSelect: 'none',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            transition: 'transform 0.15s, opacity 0.15s, box-shadow 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
+          }}
+          onMouseDown={e => {
+            e.currentTarget.style.opacity = '0.7';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+          onMouseUp={e => {
+            e.currentTarget.style.opacity = '1';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+          }}
+          onDragEnd={e => {
+            e.currentTarget.style.opacity = '1';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
+          }}
+        >
+          <span style={{
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 14,
+            flexShrink: 0,
+          }}>📄</span>
+          <span style={{
+            fontSize: 13.5,
+            fontWeight: 500,
+            color: 'var(--ink)',
+            lineHeight: 1.25,
+            wordBreak: 'break-word',
+          }}>
+            {item.title}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 export default function ComposeModal({ onClose, onCreated }: Props) {
   const { toast } = useToast();
@@ -155,6 +298,11 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [libraryContextPreview, setLibraryContextPreview] = useState<LibraryContextPreview | null>(null);
   const [libraryContextLoading, setLibraryContextLoading] = useState(false);
+  const [matchedLibraryItems, setMatchedLibraryItems] = useState<KnowledgeLibraryItem[]>([]);
+  const [selectedLibraryItems, setSelectedLibraryItems] = useState<KnowledgeLibraryItem[]>([]);
+  const [mentionState, setMentionState] = useState<{ start: number; query: string } | null>(null);
+  const [guidedLibraryItems, setGuidedLibraryItems] = useState<KnowledgeLibraryItem[]>([]);
+  const [chatInputDragOver, setChatInputDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Suggestions from the most recent AI message
@@ -207,8 +355,19 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const draftRef = useAutoResize(draft, { minHeight: 260, maxHeight: 560 });
 
   useEffect(() => {
-    submissionsApi.composeOptions()
-      .then(({ data }) => {
+    cachedFetch(
+      'compose_options',
+      () => submissionsApi.composeOptions().then((r) => r.data),
+      {
+        ttl: 5 * 60_000,      // treat as fresh for 5 min
+        staleTtl: 60 * 60_000, // serve stale for up to 1 hour while refreshing
+        onRefresh: (fresh) => {
+          setDocTypes(fresh.document_guidance);
+          setStakeholders(fresh.stakeholders);
+        },
+      }
+    )
+      .then((data) => {
         setDocTypes(data.document_guidance);
         setStakeholders(data.stakeholders);
       })
@@ -216,12 +375,26 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   }, []);
 
   useEffect(() => {
-    if (step !== 'context' || !docType || !stakeholder) {
+    const shouldShowLibraryContext = step === 'context' || step === 'custom_prompt';
+    if (!shouldShowLibraryContext || !docType || !stakeholder) {
       setLibraryContextPreview(null);
       setLibraryContextLoading(false);
+      setMatchedLibraryItems([]);
+      setSelectedLibraryItems([]);
+      setMentionState(null);
       return;
     }
 
+    // Load chips from cache instantly — no spinner needed for this part
+    cachedFetch(
+      'library_items',
+      () => libraryApi.list().then(r => r.data),
+      { ttl: 3 * 60_000, staleTtl: 30 * 60_000 }
+    ).then(items => {
+      setMatchedLibraryItems(filterLibraryItems(items, docType, stakeholder));
+    }).catch(() => setMatchedLibraryItems([]));
+
+    // Still fetch the rendered context for AI injection (used by generation)
     setLibraryContextLoading(true);
     submissionsApi.libraryContext(docType, stakeholder)
       .then(({ data }) => setLibraryContextPreview(data))
@@ -250,11 +423,71 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
 
   function updateContextField(key: string, value: string) {
     setContextFields((fields) => ({ ...fields, [key]: value }));
+    if (key === EXTRA_CONTEXT_FIELD.key) {
+      const nextMentionState = getMentionState(value);
+      setMentionState(nextMentionState);
+    }
   }
 
   const canGenerateDraft = visibleFieldDefs
     .filter((field) => field.required)
     .every((field) => (contextFields[field.key] ?? '').trim());
+
+  // Toggle a chip tag in the prompt text
+  function toggleLibraryTag(title: string) {
+    setChatInput(prev => {
+      const tag = `@[${title}]`;
+      if (prev.includes(tag)) {
+        return prev.replace(tag, '').replace(/\s{2,}/g, ' ').trim();
+      } else {
+        return prev ? `${prev} ${tag}` : tag;
+      }
+    });
+  }
+
+  function toggleAutonomousLibraryItem(item: KnowledgeLibraryItem) {
+    setSelectedLibraryItems((prev) => {
+      const alreadySelected = prev.some((libraryItem) => libraryItem.id === item.id);
+      if (alreadySelected) {
+        return prev.filter((libraryItem) => libraryItem.id !== item.id);
+      }
+      return [...prev, item];
+    });
+    setMentionState(null);
+  }
+
+  function selectAllLibraryItems() {
+    setSelectedLibraryItems(matchedLibraryItems);
+    setMentionState(null);
+  }
+
+  function removeLastSelectedLibraryItem() {
+    setSelectedLibraryItems((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.slice(0, -1);
+    });
+  }
+
+  function toggleGuidedLibraryItem(item: KnowledgeLibraryItem) {
+    setGuidedLibraryItems((prev) => {
+      const alreadySelected = prev.some((libraryItem) => libraryItem.id === item.id);
+      if (alreadySelected) {
+        return prev.filter((libraryItem) => libraryItem.id !== item.id);
+      }
+      return [...prev, item];
+    });
+  }
+
+  function selectAllGuidedLibraryItems() {
+    setGuidedLibraryItems(matchedLibraryItems);
+  }
+
+  function removeLastGuidedLibraryItem() {
+    setGuidedLibraryItems((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.slice(0, -1);
+    });
+  }
 
   // Chat generation
   async function sendChatMessage() {
@@ -267,12 +500,16 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       setChatMessages((prev) => [...prev, { role: 'user', content: input }]);
       setGenerating(true);
       try {
+        const formData: Record<string, string> = {
+          "User's Complete Custom Prompt": input,
+          ...(guidedLibraryItems.length > 0
+            ? { founder_library_context: buildFounderLibraryContextBlock(guidedLibraryItems) }
+            : {}),
+        };
         const { data } = await submissionsApi.generateDraft(
           docType,
           stakeholder,
-          {
-            "User's Complete Custom Prompt": input,
-          },
+          formData,
           {
             llm_mode: llmMode,
             thinking_instructions: trimmedThinkingInstructions || undefined,
@@ -377,9 +614,14 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     if (!docType || !stakeholder) return;
     setGenerating(true);
     try {
-      const formData = step === 'custom_prompt'
+      const formData: Record<string, string> = step === 'custom_prompt'
         ? { "User's Complete Custom Prompt": customPromptText }
-        : contextFields;
+        : {
+            ...contextFields,
+            ...(selectedLibraryItems.length > 0
+              ? { founder_library_context: buildFounderLibraryContextBlock(selectedLibraryItems) }
+              : {}),
+          } as Record<string, string>;
 
       const { data } = await submissionsApi.generateDraft(docType, stakeholder, formData, {
         llm_mode: llmMode,
@@ -568,37 +810,29 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, flex: 1, alignContent: 'start' }}>
             <div className="form-group" style={{ gridColumn: '1 / -1', marginBottom: 2 }}>
-              <label className="form-label">Founder Library Context</label>
-              <div style={{
-                border: '1px solid var(--border)',
-                borderRadius: 14,
-                background: 'var(--white)',
-                padding: 16,
-                minHeight: 120,
-              }}>
-                {libraryContextLoading ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-soft)' }}>
-                    <Spinner />
-                    Loading matching founder library context...
-                  </div>
-                ) : libraryContextPreview?.has_context ? (
-                  <pre style={{
-                    margin: 0,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    fontFamily: 'DM Mono, monospace',
-                    fontSize: 12.5,
-                    lineHeight: 1.65,
-                    color: 'var(--ink)',
-                  }}>
-                    {libraryContextPreview.library_context}
-                  </pre>
-                ) : (
-                  <div style={{ color: 'var(--ink-soft)', fontSize: 13, lineHeight: 1.6 }}>
-                    No founder library items match this document type and stakeholder yet.
-                  </div>
-                )}
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                Founder Library
+                <span style={{ fontSize: 11, color: 'var(--ink-soft)', fontWeight: 400 }}>matched context</span>
+              </label>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>
+                Click an item to append it into Additional Context for this autonomous draft.
               </div>
+              {libraryContextLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)', fontSize: 12.5 }}>
+                  <Spinner />
+                  Matching library…
+                </div>
+              ) : matchedLibraryItems.length > 0 ? (
+                <LibraryContextChips
+                  items={matchedLibraryItems}
+                  onInsert={toggleAutonomousLibraryItem}
+                  selectedIds={new Set(selectedLibraryItems.map((item) => item.id))}
+                />
+              ) : (
+                <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>
+                  No matches yet
+                </div>
+              )}
             </div>
             {visibleFieldDefs.map((field) => (
               <div
@@ -609,10 +843,148 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                 <label className="form-label">
                   {field.label} {field.required ? <span className="required">*</span> : null}
                 </label>
+                {field.key === EXTRA_CONTEXT_FIELD.key && mentionState && (
+                  <div
+                    style={{
+                      marginBottom: 10,
+                      border: '1px solid var(--border)',
+                      borderRadius: 14,
+                      background: 'var(--surface)',
+                      padding: 10,
+                      boxShadow: '0 10px 24px rgba(0,0,0,0.14)',
+                    }}
+                  >
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Library Suggestions
+                      </div>
+                    <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{
+                          justifyContent: 'flex-start',
+                          textAlign: 'left',
+                          width: '100%',
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                          background: 'rgba(255, 101, 138, 0.10)',
+                          border: '1px solid var(--pink-500)',
+                        }}
+                        onClick={selectAllLibraryItems}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.08)', marginRight: 10, flexShrink: 0 }}>
+                          @
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>@all</span>
+                          <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+                            Add all matching founder library items
+                          </span>
+                        </span>
+                      </button>
+                      {matchedLibraryItems
+                        .filter((item) => !mentionState.query || item.title.toLowerCase().includes(mentionState.query))
+                        .filter((item) => !selectedLibraryItems.some((selected) => selected.id === item.id))
+                        .slice(0, 8)
+                        .map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{
+                              justifyContent: 'flex-start',
+                              textAlign: 'left',
+                              width: '100%',
+                              borderRadius: 10,
+                              padding: '10px 12px',
+                              background: 'var(--surface)',
+                            }}
+                            onClick={() => {
+                              const current = contextFields[EXTRA_CONTEXT_FIELD.key] ?? '';
+                              const nextValue = removeMentionQuery(current, mentionState);
+                              updateContextField(EXTRA_CONTEXT_FIELD.key, nextValue);
+                              setSelectedLibraryItems((prev) =>
+                                prev.some((selected) => selected.id === item.id)
+                                  ? prev
+                                  : [...prev, item]
+                              );
+                              setMentionState(null);
+                            }}
+                          >
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.08)', marginRight: 10, flexShrink: 0 }}>
+                              📄
+                            </span>
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{item.title}</span>
+                              <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+                                {item.section_label}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      {!matchedLibraryItems
+                        .filter((item) => !mentionState.query || item.title.toLowerCase().includes(mentionState.query))
+                        .filter((item) => !selectedLibraryItems.some((selected) => selected.id === item.id)).length && (
+                        <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', padding: '6px 2px' }}>
+                          No matching library items.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {field.key === EXTRA_CONTEXT_FIELD.key && selectedLibraryItems.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                    {selectedLibraryItems.map((item) => (
+                      <span
+                        key={item.id}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 12px',
+                          borderRadius: 999,
+                          background: 'rgba(255, 101, 138, 0.16)',
+                          border: '1px solid var(--pink-500)',
+                          color: 'var(--ink)',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 999, background: 'rgba(0,0,0,0.18)', fontSize: 11 }}>
+                          @
+                        </span>
+                        <span>{item.title}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLibraryItems((prev) => prev.filter((selected) => selected.id !== item.id))}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'inherit',
+                            cursor: 'pointer',
+                            padding: 0,
+                            marginLeft: 2,
+                            fontSize: 14,
+                            lineHeight: 1,
+                          }}
+                          aria-label={`Remove ${item.title}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {field.type === 'textarea' ? (
                   <AutoTextarea
                     value={contextFields[field.key] ?? ''}
                     onChange={e => updateContextField(field.key, e.target.value)}
+                    onKeyDown={field.key === EXTRA_CONTEXT_FIELD.key ? (e) => {
+                      if (e.key === 'Backspace' && (contextFields[field.key] ?? '') === '' && selectedLibraryItems.length > 0) {
+                        e.preventDefault();
+                        removeLastSelectedLibraryItem();
+                      }
+                    } : undefined}
                     placeholder={field.placeholder}
                     readOnly={field.readOnly}
                     minHeight={field.key === 'key_benefit' || field.key === 'programmes_to_include' || field.key === 'school_specific_customisation' ? 100 : field.key === EXTRA_CONTEXT_FIELD.key ? 140 : 88}
@@ -918,43 +1290,71 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             </div>
           </div>
 
-          <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 14, padding: 16, background: 'var(--white)' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Founder Library Context
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>📚</span>
+              Founder Library
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— {docType ? docType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''} → {stakeholder ? stakeholder.charAt(0).toUpperCase() + stakeholder.slice(1) : ''}</span>
             </div>
-            <div style={{
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              background: 'var(--surface)',
-              padding: 14,
-              minHeight: 110,
-            }}>
-              {libraryContextLoading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-soft)' }}>
-                  <Spinner />
-                  Loading matching founder library context...
-                </div>
-              ) : libraryContextPreview?.has_context ? (
-                <pre style={{
-                  margin: 0,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  fontFamily: 'DM Mono, monospace',
-                  fontSize: 12.5,
-                  lineHeight: 1.65,
-                  color: 'var(--ink)',
-                }}>
-                  {libraryContextPreview.library_context}
-                </pre>
-              ) : (
-                <div style={{ color: 'var(--ink-soft)', fontSize: 13, lineHeight: 1.6 }}>
-                  No founder library items match this document type and stakeholder yet.
-                </div>
-              )}
+            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>
+              Click an item to add it as an @mention.
             </div>
-            <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ink-soft)' }}>
-              Matched for: {docType ? docType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unknown'} → {stakeholder ? stakeholder.charAt(0).toUpperCase() + stakeholder.slice(1) : 'Unknown'}
-            </div>
+            {guidedLibraryItems.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {guidedLibraryItems.map((item) => (
+                  <span
+                    key={item.id}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderRadius: 999,
+                      background: 'rgba(255, 101, 138, 0.16)',
+                      border: '1px solid var(--pink-500)',
+                      color: 'var(--ink)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 999, background: 'rgba(0,0,0,0.18)', fontSize: 11 }}>
+                      @
+                    </span>
+                    <span>{item.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => setGuidedLibraryItems((prev) => prev.filter((selected) => selected.id !== item.id))}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        padding: 0,
+                        marginLeft: 2,
+                        fontSize: 14,
+                        lineHeight: 1,
+                      }}
+                      aria-label={`Remove ${item.title}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {libraryContextLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)', fontSize: 12.5 }}>
+                <Spinner />
+                Matching library…
+              </div>
+            ) : matchedLibraryItems.length > 0 ? (
+              <LibraryContextChips
+                items={matchedLibraryItems}
+                onInsert={toggleGuidedLibraryItem}
+              />
+            ) : (
+              <div style={{ color: 'var(--ink-soft)', fontSize: 12.5 }}>No matches yet</div>
+            )}
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', marginBottom: 20, padding: '10px 4px', display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -1119,13 +1519,40 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             </div>
           )}
 
-          <div style={{ position: 'relative' }}>
-            <textarea
-              className="form-textarea"
-              style={{ minHeight: 130, paddingRight: 60, paddingBottom: 16, paddingTop: 16, resize: 'none' }}
+          <div
+            style={{ position: 'relative' }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setChatInputDragOver(true); }}
+            onDragLeave={() => setChatInputDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setChatInputDragOver(false);
+              const title = e.dataTransfer.getData('text/library-item-title');
+              if (!title) return;
+              toggleLibraryTag(title);
+            }}
+          >
+              <textarea
+                className="form-textarea"
+                style={{
+                  minHeight: 130,
+                paddingRight: 60,
+                paddingBottom: 16,
+                paddingTop: 16,
+                resize: 'none',
+                transition: 'box-shadow 0.15s, border-color 0.15s',
+                ...(chatInputDragOver ? {
+                  borderColor: 'var(--green-700, #15803d)',
+                  boxShadow: '0 0 0 3px rgba(21,128,61,0.2)',
+                } : {}),
+              }}
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => {
+              onKeyDown={(e) => {
+                if (e.key === 'Backspace' && chatInput === '' && guidedLibraryItems.length > 0) {
+                  e.preventDefault();
+                  removeLastGuidedLibraryItem();
+                  return;
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   sendChatMessage();
@@ -1133,7 +1560,91 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               }}
               placeholder={chatMessages.length === 0 ? "Paste your complete prompt or instruction here (Press Enter to send)..." : "Ask AI to change something..."}
               disabled={generating || pendingChatInput !== null}
-            />
+              />
+            {getMentionState(chatInput) && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: '100%',
+                  marginBottom: 10,
+                  border: '1px solid var(--border)',
+                  borderRadius: 14,
+                  background: 'var(--surface)',
+                  padding: 10,
+                  boxShadow: '0 10px 24px rgba(0,0,0,0.14)',
+                  zIndex: 20,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Library Suggestions
+                </div>
+                <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      width: '100%',
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      background: 'rgba(255, 101, 138, 0.10)',
+                      border: '1px solid var(--pink-500)',
+                    }}
+                    onClick={selectAllGuidedLibraryItems}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.08)', marginRight: 10, flexShrink: 0 }}>
+                      @
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>@all</span>
+                      <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+                        Add all matching founder library items
+                      </span>
+                    </span>
+                  </button>
+                  {matchedLibraryItems
+                    .filter((item) => {
+                      const query = getMentionState(chatInput)?.query ?? '';
+                      return !query || item.title.toLowerCase().includes(query);
+                    })
+                    .filter((item) => !guidedLibraryItems.some((selected) => selected.id === item.id))
+                    .slice(0, 8)
+                    .map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{
+                          justifyContent: 'flex-start',
+                          textAlign: 'left',
+                          width: '100%',
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                          background: 'var(--surface)',
+                        }}
+                        onClick={() => {
+                          toggleGuidedLibraryItem(item);
+                          const mention = getMentionState(chatInput);
+                          if (mention) {
+                            setChatInput((current) => removeMentionQuery(current, mention));
+                          }
+                        }}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.08)', marginRight: 10, flexShrink: 0 }}>
+                          📄
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{item.title}</span>
+                          <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{item.section_label}</span>
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
             <button
               className="btn btn-primary"
               style={{ position: 'absolute', right: 8, bottom: 8, padding: '8px 14px', borderRadius: 8 }}

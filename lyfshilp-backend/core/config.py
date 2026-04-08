@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = "lyfshilp"
 
     # Connection pool tunables
@@ -94,6 +94,10 @@ class Settings(BaseSettings):
                 )
 
             return url
+
+        if not self.POSTGRES_PASSWORD.strip():
+            raise ValueError("POSTGRES_PASSWORD is required when DATABASE_URL is not set.")
+
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -126,16 +130,23 @@ class Settings(BaseSettings):
     def CORS_ORIGINS(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
+    @staticmethod
+    def _split_csv(value: str) -> List[str]:
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
+
     @property
     def ALLOWED_EMAIL_EXCEPTION_LIST(self) -> List[str]:
         return [email.strip().lower() for email in self.ALLOWED_EMAIL_EXCEPTIONS.split(",") if email.strip()]
 
     @property
     def ALLOWED_EMAIL_DOMAIN_LIST(self) -> List[str]:
-        raw = [domain.strip().lower() for domain in self.ALLOWED_EMAIL_DOMAINS.split(",") if domain.strip()]
-        if raw:
-            return raw
-        return [self.ALLOWED_EMAIL_DOMAIN.strip().lower()] if self.ALLOWED_EMAIL_DOMAIN.strip() else []
+        domains: list[str] = []
+        if self.ALLOWED_EMAIL_DOMAIN.strip():
+            domains.extend(self._split_csv(self.ALLOWED_EMAIL_DOMAIN))
+        if self.ALLOWED_EMAIL_DOMAINS.strip():
+            domains.extend(self._split_csv(self.ALLOWED_EMAIL_DOMAINS))
+        # Keep the order stable while removing duplicates.
+        return list(dict.fromkeys(domains))
 
 
 @lru_cache

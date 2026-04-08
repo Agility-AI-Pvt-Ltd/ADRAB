@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE, libraryApi, submissionsApi, usersApi } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import { Modal, Spinner, TextPreview, useToast, fmtDateTime } from '../components/shared';
 import type { KnowledgeLibraryItem } from '../types';
+import { cachedFetch, invalidateCache } from '../utils/apiCache';
 
 type ChoiceOption = {
   value: string;
@@ -89,7 +91,9 @@ function resolveSourceUrl(path: string | null | undefined) {
 }
 
 export default function LibraryPage() {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const isFounder = user?.role === 'founder' || user?.role === 'admin';
   const [items, setItems] = useState<KnowledgeLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,12 +128,33 @@ export default function LibraryPage() {
   const [bulkStakeholders, setBulkStakeholders] = useState('');
   const [bulkDocTypeScope, setBulkDocTypeScope] = useState<'unset' | 'all' | 'selected'>('unset');
   const [bulkStakeholderScope, setBulkStakeholderScope] = useState<'unset' | 'all' | 'selected'>('unset');
+  const [previewItem, setPreviewItem] = useState<KnowledgeLibraryItem | null>(null);
   const [form, setForm] = useState<LibraryFormState>(EMPTY_FORM);
 
-  async function load() {
-    setLoading(true);
+  // Load library items — serves from localStorage cache instantly on revisit,
+  // then refreshes in background if the entry is stale.
+  async function load(forceRefresh = false) {
+    setLoading(prev => {
+      // Only show spinner when there's nothing to show yet
+      return prev;
+    });
+
+    if (forceRefresh) {
+      invalidateCache('library_items');
+    }
+
     try {
-      const { data } = await libraryApi.list();
+      const data = await cachedFetch(
+        'library_items',
+        () => libraryApi.list().then(r => r.data),
+        {
+          ttl: 3 * 60_000,       // 3 min fresh window
+          staleTtl: 30 * 60_000, // 30 min stale window
+          onRefresh: (fresh) => {
+            setItems(fresh);
+          },
+        }
+      );
       setItems(data);
     } finally {
       setLoading(false);
@@ -137,6 +162,7 @@ export default function LibraryPage() {
   }
 
   useEffect(() => {
+    setLoading(true);
     load();
   }, []);
 
@@ -145,19 +171,23 @@ export default function LibraryPage() {
   }, [items]);
 
   useEffect(() => {
-    submissionsApi.composeOptions()
-      .then(({ data }) => {
-        setDocTypeOptions(
-          data.document_guidance.map(item => ({
-            value: item.doc_type,
-            label: item.title,
-          }))
-        );
+    cachedFetch(
+      'compose_options',
+      () => submissionsApi.composeOptions().then(r => r.data),
+      {
+        ttl: 5 * 60_000,
+        staleTtl: 60 * 60_000,
+        onRefresh: (fresh) => {
+          setDocTypeOptions(fresh.document_guidance.map(item => ({ value: item.doc_type, label: item.title })));
+          setStakeholderOptions(fresh.stakeholders);
+        },
+      }
+    )
+      .then((data) => {
+        setDocTypeOptions(data.document_guidance.map(item => ({ value: item.doc_type, label: item.title })));
         setStakeholderOptions(data.stakeholders);
       })
-      .catch(() => {
-        toast('error', 'Could not load library selection options');
-      });
+      .catch(() => toast('error', 'Could not load library selection options'));
   }, []);
 
   useEffect(() => {
@@ -270,6 +300,10 @@ export default function LibraryPage() {
     });
   }
 
+  function openPreview(item: KnowledgeLibraryItem) {
+    setPreviewItem(item);
+  }
+
   function toggleSelectedItem(itemId: string) {
     setSelectedItemIds(prev => (
       prev.includes(itemId)
@@ -295,6 +329,10 @@ export default function LibraryPage() {
     setDriveFiles([]);
     setSelectedDriveFileId('');
     setForm(EMPTY_FORM);
+  }
+
+  function closePreview() {
+    setPreviewItem(null);
   }
 
   async function parseSource() {
@@ -369,7 +407,8 @@ export default function LibraryPage() {
         sort_order: data.sort_order,
         is_active: data.is_active,
       });
-      await load();
+      invalidateCache('library_items');
+      await load(true);
       setWizardStep('metadata');
       toast('success', data.intake_analysis?.needs_clarification
         ? 'Analysis complete. Please answer the questions and re-run.'
@@ -449,6 +488,7 @@ export default function LibraryPage() {
     try {
       if (editingItem) {
         await libraryApi.update(editingItem.id, buildUpdatePayload());
+        invalidateCache('library_items');
         toast('success', 'Library item updated');
       } else if (creating) {
         const fd = new FormData();
@@ -465,6 +505,7 @@ export default function LibraryPage() {
         fd.append('sort_order', String(form.sort_order));
         fd.append('is_active', String(form.is_active));
         await libraryApi.create(fd);
+        invalidateCache('library_items');
         toast('success', 'Library item added');
       }
       closeModal();
@@ -479,7 +520,8 @@ export default function LibraryPage() {
   async function toggleItem(item: KnowledgeLibraryItem) {
     try {
       await libraryApi.toggle(item.id);
-      await load();
+      invalidateCache('library_items');
+      await load(true);
       toast('success', item.is_active ? 'Library item disabled' : 'Library item enabled');
     } catch (e: any) {
       toast('error', e.response?.data?.detail ?? 'Could not update item status');
@@ -494,7 +536,8 @@ export default function LibraryPage() {
 
     try {
       await libraryApi.delete(item.id);
-      await load();
+      invalidateCache('library_items');
+      await load(true);
       toast('success', 'Library item deleted permanently');
     } catch (e: any) {
       toast('error', e.response?.data?.detail ?? 'Could not delete library item');
@@ -532,7 +575,8 @@ export default function LibraryPage() {
       setBulkDocTypeScope('unset');
       setBulkStakeholderScope('unset');
       setSelectedItemIds([]);
-      await load();
+      invalidateCache('library_items');
+      await load(true);
     } catch (e: any) {
       toast('error', e.response?.data?.detail ?? 'Could not apply scope to selected items');
     } finally {
@@ -545,16 +589,19 @@ export default function LibraryPage() {
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div>
           <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
-            Founder Library
+            {isFounder ? 'Founder Library' : 'Library'}
           </h1>
           <p style={{ fontSize: 13.5, color: 'var(--ink-soft)', maxWidth: 720 }}>
-            Upload source documents, convert them into prompt-ready markdown, and attach them to the drafting context
-            by section, document type, and stakeholder.
+            {isFounder
+              ? 'Upload source documents, convert them into prompt-ready markdown, and attach them to the drafting context by section, document type, and stakeholder.'
+              : 'Browse founder-approved knowledge items and read the prompt-ready context available for your document type and stakeholder.'}
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={openCreate}>
-          + Add to Library
-        </button>
+        {isFounder && (
+          <button className="btn btn-primary btn-sm" onClick={openCreate}>
+            + Add to Library
+          </button>
+        )}
       </div>
 
       <div className="stats-row" style={{ marginBottom: 18 }}>
@@ -601,10 +648,10 @@ export default function LibraryPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <button className="btn btn-outline btn-sm" onClick={load}>↺ Refresh</button>
+        <button className="btn btn-outline btn-sm" onClick={() => load(true)}>↺ Refresh</button>
       </div>
 
-      {selectedItemIds.length > 0 && (
+      {isFounder && selectedItemIds.length > 0 && (
         <div className="table-card" style={{ marginBottom: 18 }}>
           <div className="table-header" style={{ alignItems: 'center', gap: 16 }}>
             <div>
@@ -719,41 +766,54 @@ export default function LibraryPage() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: 42 }}>
-                      <input
-                        type="checkbox"
-                        checked={group.items.length > 0 && group.items.every(item => selectedItemIds.includes(item.id))}
-                        onChange={() => {
-                          const ids = group.items.map(item => item.id);
-                          const allSelected = ids.every(id => selectedItemIds.includes(id));
-                          setSelectedItemIds(prev => (
-                            allSelected
-                              ? prev.filter(id => !ids.includes(id))
-                              : Array.from(new Set([...prev, ...ids]))
-                          ));
-                        }}
-                        aria-label={`Select all items in ${group.section}`}
-                      />
-                    </th>
+                    {isFounder && (
+                      <th style={{ width: 42 }}>
+                        <input
+                          type="checkbox"
+                          checked={group.items.length > 0 && group.items.every(item => selectedItemIds.includes(item.id))}
+                          onChange={() => {
+                            const ids = group.items.map(item => item.id);
+                            const allSelected = ids.every(id => selectedItemIds.includes(id));
+                            setSelectedItemIds(prev => (
+                              allSelected
+                                ? prev.filter(id => !ids.includes(id))
+                                : Array.from(new Set([...prev, ...ids]))
+                            ));
+                          }}
+                          aria-label={`Select all items in ${group.section}`}
+                        />
+                      </th>
+                    )}
                     <th>Title</th>
                     <th>Scope</th>
                     <th>Source</th>
                     <th>Status</th>
-                    <th>Updated</th>
-                    <th></th>
+                    {isFounder && <th>Updated</th>}
+                    {isFounder && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {group.items.map(item => (
-                    <tr key={item.id}>
-                      <td style={{ width: 42 }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedItemIds.includes(item.id)}
-                          onChange={() => toggleSelectedItem(item.id)}
-                          aria-label={`Select ${item.title}`}
-                        />
-                      </td>
+                    <tr
+                      key={item.id}
+                      style={{ cursor: isFounder ? 'default' : 'pointer' }}
+                      onClick={() => {
+                        if (!isFounder) {
+                          openPreview(item);
+                        }
+                      }}
+                    >
+                      {isFounder && (
+                        <td style={{ width: 42 }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedItemIds.includes(item.id)}
+                            onChange={() => toggleSelectedItem(item.id)}
+                            aria-label={`Select ${item.title}`}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </td>
+                      )}
                       <td style={{ minWidth: 260 }}>
                         <div style={{ display: 'grid', gap: 6 }}>
                           <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{item.title}</div>
@@ -786,7 +846,13 @@ export default function LibraryPage() {
                             {item.source_filename ?? 'Manual entry'}
                           </div>
                           {item.source_file_url && (
-                            <a href={resolveSourceUrl(item.source_file_url) ?? item.source_file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--blue-700)' }}>
+                            <a
+                              href={resolveSourceUrl(item.source_file_url) ?? item.source_file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ fontSize: 12, color: 'var(--blue-700)' }}
+                              onClick={e => e.stopPropagation()}
+                            >
                               Open source
                             </a>
                           )}
@@ -802,22 +868,26 @@ export default function LibraryPage() {
                           </div>
                         </div>
                       </td>
-                      <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
-                        {fmtDateTime(item.updated_at)}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>
-                            Edit
-                          </button>
-                          <button className="btn btn-outline btn-sm" onClick={() => toggleItem(item)}>
-                            {item.is_active ? 'Disable' : 'Enable'}
-                          </button>
-                          <button className="btn btn-danger btn-sm" onClick={() => deleteItem(item)}>
-                            Delete
-                          </button>
-                        </div>
-                      </td>
+                      {isFounder && (
+                        <td style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
+                          {fmtDateTime(item.updated_at)}
+                        </td>
+                      )}
+                      {isFounder && (
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>
+                              Edit
+                            </button>
+                            <button className="btn btn-outline btn-sm" onClick={() => toggleItem(item)}>
+                              {item.is_active ? 'Disable' : 'Enable'}
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={() => deleteItem(item)}>
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -825,6 +895,62 @@ export default function LibraryPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {previewItem && !isFounder && (
+        <Modal
+          title={previewItem.title}
+          subtitle={`${previewItem.section_label} · Read-only library preview`}
+          onClose={closePreview}
+          size="lg"
+          footer={(
+            <button className="btn btn-outline" onClick={closePreview}>Close</button>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <span className="status-pill status-pill-active">{previewItem.is_active ? 'Active' : 'Inactive'}</span>
+              <span className="doc-type-chip">Doc types: {(previewItem.applies_to_doc_types ?? []).length ? previewItem.applies_to_doc_types?.join(', ') : 'Global'}</span>
+              <span className="doc-type-chip">Stakeholders: {(previewItem.applies_to_stakeholders ?? []).length ? previewItem.applies_to_stakeholders?.join(', ') : 'Global'}</span>
+            </div>
+            {previewItem.description && (
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <div className="form-input" style={{ minHeight: 72, height: 'auto', whiteSpace: 'pre-wrap' }}>
+                  {previewItem.description}
+                </div>
+              </div>
+            )}
+            <div className="form-group">
+              <label className="form-label">Content</label>
+              <div style={{
+                border: '1px solid var(--border)',
+                borderRadius: 14,
+                background: 'var(--surface)',
+                padding: 16,
+                maxHeight: 420,
+                overflow: 'auto',
+              }}>
+                <pre style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontFamily: 'DM Mono, monospace',
+                  fontSize: 12.5,
+                  lineHeight: 1.65,
+                  color: 'var(--ink)',
+                }}>
+                  {previewItem.content_markdown}
+                </pre>
+              </div>
+            </div>
+            {previewItem.source_file_url && (
+              <a href={resolveSourceUrl(previewItem.source_file_url) ?? previewItem.source_file_url} target="_blank" rel="noreferrer" style={{ color: 'var(--blue-700)', fontSize: 13 }}>
+                Open source
+              </a>
+            )}
+          </div>
+        </Modal>
       )}
 
       {(creating || editingItem) && (

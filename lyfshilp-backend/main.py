@@ -17,40 +17,9 @@ from api.router import api_router
 from core.config import settings
 from core.logging import configure_logging, get_logger
 from db.session import close_db, init_db
-from scripts.seed_ai_review_guidance import seed_ai_review_guidance
-from scripts.seed_document_guidance import seed_document_guidance
-from scripts.seed_emoji_guidance import seed_emoji_guidance
-from scripts.seed_few_shot_examples import seed_few_shot_examples
-from scripts.seed_first_founder import seed_first_founder
-from scripts.seed_stakeholder_guidance import seed_stakeholder_guidance
-from scripts.seed_system_prompt import seed_system_prompt
 from utils.exception_handlers import register_exception_handlers
 
 logger = get_logger(__name__)
-
-
-async def run_startup_seed_scripts() -> None:
-    """
-    Run the repo's reusable seed scripts on app startup.
-    These functions are idempotent in normal mode and mirror the manual scripts.
-    """
-    seed_tasks = [
-        ("seed_first_founder", seed_first_founder),
-        ("seed_system_prompt", seed_system_prompt),
-        ("seed_stakeholder_guidance", seed_stakeholder_guidance),
-        ("seed_ai_review_guidance", seed_ai_review_guidance),
-        ("seed_emoji_guidance", seed_emoji_guidance),
-        ("seed_document_guidance", seed_document_guidance),
-        ("seed_few_shot_examples", seed_few_shot_examples),
-    ]
-
-    for label, task in seed_tasks:
-        logger.info("Running startup seed script: %s", label)
-        try:
-            await task(overwrite=False)
-        except Exception:
-            logger.exception("Startup seed script failed: %s", label)
-            raise
 
 
 @asynccontextmanager
@@ -60,13 +29,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
     if settings.DEBUG or settings.AUTO_INIT_DB:
-        # In local/dev and bootstrap deployments, auto-create tables and run
-        # the reusable seed scripts once. The scripts are idempotent.
+        # In local/dev and bootstrap deployments, auto-create tables on startup.
         try:
             await init_db()
-            await run_startup_seed_scripts()
         except Exception:
-            logger.exception("Application startup failed during DB init / seed phase")
+            logger.exception("Application startup failed during DB init phase")
             raise
 
     yield

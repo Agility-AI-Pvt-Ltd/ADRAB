@@ -123,15 +123,13 @@ export default function Sidebar({ pendingCount }: { pendingCount?: number }) {
             Compose
           </NavLink>
         )}
-        {isFounder && (
-          <NavLink
-            to="/library"
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-          >
-            <span>{ICONS.library}</span>
-            Library
-          </NavLink>
-        )}
+        <NavLink
+          to="/library"
+          className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+        >
+          <span>{ICONS.library}</span>
+          Library
+        </NavLink>
         {!isFounder && (
           <NavLink
             to="/submissions"

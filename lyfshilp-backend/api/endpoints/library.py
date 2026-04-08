@@ -26,8 +26,8 @@ def _csv_to_list(value: Optional[str]) -> Optional[list[str]]:
     return cleaned or None
 
 
-@router.get("/items", response_model=List[KnowledgeLibraryResponse], dependencies=[FounderOnly])
-async def list_items(session: DBSession):
+@router.get("/items", response_model=List[KnowledgeLibraryResponse])
+async def list_items(current_user: CurrentUser, session: DBSession):
     service = KnowledgeLibraryService(session)
     return await service.list_items()
 
@@ -106,8 +106,8 @@ async def create_item(
     )
 
 
-@router.get("/items/{item_id}", response_model=KnowledgeLibraryResponse, dependencies=[FounderOnly])
-async def get_item(item_id: UUID, session: DBSession):
+@router.get("/items/{item_id}", response_model=KnowledgeLibraryResponse)
+async def get_item(item_id: UUID, current_user: CurrentUser, session: DBSession):
     service = KnowledgeLibraryService(session)
     return await service.get_item(item_id)
 
