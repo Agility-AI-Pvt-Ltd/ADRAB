@@ -47,3 +47,4 @@ uploads/
 
 # SQL dumps
 *.sql
+lyfshilp-frontend/.env

@@ -192,6 +192,7 @@ class SubmissionWorkflowService:
         context = await self._context_service.build_generation_context(
             state["doc_type"],
             state["stakeholder"],
+            current_department=state.get("current_department"),
             trace=trace,
         )
         ai_service = await self._context_service.build_ai_service(state["stakeholder"], trace=trace)
@@ -270,6 +271,7 @@ class SubmissionWorkflowService:
         context = await self._context_service.build_review_context(
             state["doc_type"],
             state["stakeholder"],
+            current_department=state.get("current_department"),
             trace=trace,
         )
         ai_service = await self._context_service.build_ai_service(state["stakeholder"], trace=trace)
@@ -370,6 +372,7 @@ class SubmissionWorkflowService:
         context = await self._context_service.build_generation_context(
             request.doc_type,
             request.stakeholder,
+            current_department=request.current_department,
             trace=trace,
         )
         ai_service = await self._context_service.build_ai_service(request.stakeholder, trace=trace)

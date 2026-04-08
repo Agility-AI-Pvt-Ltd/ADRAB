@@ -16,6 +16,7 @@ class KnowledgeLibraryUpdate(BaseModel):
     content_markdown: str
     applies_to_doc_types: Optional[list[str]] = None
     applies_to_stakeholders: Optional[list[str]] = None
+    visible_to_departments: Optional[list[str]] = None
     tags: Optional[list[str]] = None
     sort_order: int = 0
     is_active: bool = True
@@ -81,6 +82,7 @@ class KnowledgeLibraryResponse(BaseModel):
     raw_text: Optional[str]
     applies_to_doc_types: Optional[list[str]]
     applies_to_stakeholders: Optional[list[str]]
+    visible_to_departments: Optional[list[str]]
     tags: Optional[list[str]]
     sort_order: int
     is_active: bool

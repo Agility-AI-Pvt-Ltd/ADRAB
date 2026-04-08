@@ -179,6 +179,7 @@ export interface KnowledgeLibraryItem {
   raw_text: string | null;
   applies_to_doc_types: string[] | null;
   applies_to_stakeholders: string[] | null;
+  visible_to_departments: string[] | null;
   tags: string[] | null;
   sort_order: number;
   is_active: boolean;
@@ -273,6 +274,11 @@ export interface DraftAnalysisResponse {
   rewrite: string;
   workflow_stage: string;
   workflow_memory: any;
+}
+
+export interface LibraryContextPreview {
+  library_context: string;
+  has_context: boolean;
 }
 
 export interface DraftWorkflowResponse {

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import NotFoundError, ValidationError
 from core.logging import get_logger
-from models.models import KnowledgeLibraryItem, Stakeholder, User
+from models.models import KnowledgeLibraryItem, Stakeholder, TeamDepartment, User
 from services.ai_service import AIService
 from services.file_service import FileService
 from services.google_drive_service import GoogleDriveService
@@ -51,6 +51,14 @@ class KnowledgeLibraryService:
                 """
             )
         )
+        await self._session.execute(
+            text(
+                """
+                ALTER TABLE knowledge_library_items
+                ADD COLUMN IF NOT EXISTS visible_to_departments VARCHAR(255)[]
+                """
+            )
+        )
 
     @staticmethod
     def normalize_section_key(value: str) -> str:
@@ -79,6 +87,14 @@ class KnowledgeLibraryService:
         if not values:
             return None
         cleaned = [KnowledgeLibraryService.normalize_section_key(value) for value in values if value and value.strip()]
+        return cleaned or None
+
+    @staticmethod
+    def _normalize_department_values(values: Optional[list[str]]) -> Optional[list[str]]:
+        if not values:
+            return None
+        allowed = {member.value for member in TeamDepartment}
+        cleaned = [value.strip().lower() for value in values if value and value.strip() and value.strip().lower() in allowed]
         return cleaned or None
 
     @staticmethod
@@ -178,6 +194,7 @@ class KnowledgeLibraryService:
             raw_text=parsed.raw_text,
             applies_to_doc_types=None,
             applies_to_stakeholders=None,
+            visible_to_departments=None,
             tags=None,
             sort_order=0,
             is_active=is_active,
@@ -227,6 +244,7 @@ class KnowledgeLibraryService:
         file: UploadFile | None = None,
         applies_to_doc_types: Optional[list[str]] = None,
         applies_to_stakeholders: Optional[list[str]] = None,
+        visible_to_departments: Optional[list[str]] = None,
         tags: Optional[list[str]] = None,
         sort_order: int = 0,
         is_active: bool = True,
@@ -290,6 +308,7 @@ class KnowledgeLibraryService:
             raw_text=raw_text,
             applies_to_doc_types=self._normalize_doc_type_values(applies_to_doc_types),
             applies_to_stakeholders=self._normalize_stakeholder_values(applies_to_stakeholders),
+            visible_to_departments=self._normalize_department_values(visible_to_departments),
             tags=self._normalize_tag_values(tags),
             sort_order=sort_order,
             is_active=is_active,
@@ -339,6 +358,7 @@ class KnowledgeLibraryService:
             raw_text=parsed.raw_text,
             applies_to_doc_types=None,
             applies_to_stakeholders=None,
+            visible_to_departments=None,
             tags=None,
             sort_order=0,
             is_active=is_active,
@@ -367,6 +387,7 @@ class KnowledgeLibraryService:
         current_user: User,
         applies_to_doc_types: Optional[list[str]] = None,
         applies_to_stakeholders: Optional[list[str]] = None,
+        visible_to_departments: Optional[list[str]] = None,
         tags: Optional[list[str]] = None,
         sort_order: int = 0,
         is_active: bool = True,
@@ -382,6 +403,7 @@ class KnowledgeLibraryService:
         item.content_markdown = content_markdown.strip()
         item.applies_to_doc_types = self._normalize_doc_type_values(applies_to_doc_types)
         item.applies_to_stakeholders = self._normalize_stakeholder_values(applies_to_stakeholders)
+        item.visible_to_departments = self._normalize_department_values(visible_to_departments)
         item.tags = self._normalize_tag_values(tags)
         item.sort_order = sort_order
         item.is_active = is_active
@@ -467,23 +489,41 @@ class KnowledgeLibraryService:
         await self._session.delete(item)
         await self._session.flush()
 
-    async def _get_context_matches(self, doc_type: str, stakeholder: Stakeholder) -> List[KnowledgeLibraryItem]:
+    async def _get_context_matches(
+        self,
+        doc_type: str,
+        stakeholder: Stakeholder,
+        current_department: Optional[str] = None,
+    ) -> List[KnowledgeLibraryItem]:
         await self.ensure_schema()
         doc_type_key = self.normalize_section_key(doc_type)
         stakeholder_value = stakeholder.value.lower()
+        department_value = current_department.strip().lower() if current_department else None
         rows = await self.list_items(include_inactive=False)
         matches: list[KnowledgeLibraryItem] = []
         for row in rows:
             doc_types = [self.normalize_section_key(value) for value in (row.applies_to_doc_types or [])]
             stakeholders = [value.lower() for value in (row.applies_to_stakeholders or [])]
+            departments = [value.lower() for value in (row.visible_to_departments or [])]
             doc_ok = not doc_types or doc_type_key in doc_types
             stakeholder_ok = not stakeholders or stakeholder_value in stakeholders
-            if doc_ok and stakeholder_ok:
+            department_ok = (
+                not departments
+                or department_value is None
+                or department_value == "founders"
+                or department_value in departments
+            )
+            if doc_ok and stakeholder_ok and department_ok:
                 matches.append(row)
         return matches
 
-    async def render_prompt_block(self, doc_type: str, stakeholder: Stakeholder) -> str:
-        matches = await self._get_context_matches(doc_type, stakeholder)
+    async def render_prompt_block(
+        self,
+        doc_type: str,
+        stakeholder: Stakeholder,
+        current_department: Optional[str] = None,
+    ) -> str:
+        matches = await self._get_context_matches(doc_type, stakeholder, current_department=current_department)
         if not matches:
             return ""
 
@@ -517,6 +557,7 @@ class KnowledgeLibraryService:
         file: UploadFile | None = None,
         applies_to_doc_types: Optional[list[str]] = None,
         applies_to_stakeholders: Optional[list[str]] = None,
+        visible_to_departments: Optional[list[str]] = None,
         tags: Optional[list[str]] = None,
     ) -> dict:
         await self.ensure_schema()

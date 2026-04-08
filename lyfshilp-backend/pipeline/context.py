@@ -148,6 +148,7 @@ class SubmissionPromptContextService:
         doc_type: str,
         stakeholder: Stakeholder,
         *,
+        current_department: str | None = None,
         trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
         retrieved = await self._context_assembler.assemble(
@@ -155,7 +156,11 @@ class SubmissionPromptContextService:
             stakeholder,
             trace=trace,
         )
-        library_context = await self._knowledge_library_service.render_prompt_block(doc_type, stakeholder)
+        library_context = await self._knowledge_library_service.render_prompt_block(
+            doc_type,
+            stakeholder,
+            current_department=current_department,
+        )
         if trace is not None:
             append_db_query(
                 trace,
@@ -182,6 +187,7 @@ class SubmissionPromptContextService:
         doc_type: str,
         stakeholder: Stakeholder,
         *,
+        current_department: str | None = None,
         trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
         retrieved = await self._context_assembler.assemble(
@@ -190,7 +196,11 @@ class SubmissionPromptContextService:
             include_review_guidance=True,
             trace=trace,
         )
-        library_context = await self._knowledge_library_service.render_prompt_block(doc_type, stakeholder)
+        library_context = await self._knowledge_library_service.render_prompt_block(
+            doc_type,
+            stakeholder,
+            current_department=current_department,
+        )
         if trace is not None:
             append_db_query(
                 trace,

@@ -81,6 +81,7 @@ class RefineDraftRequest(BaseModel):
     human_input: Optional[str] = None
     thinking_instructions: Optional[str] = None
     suggestions: Optional[List[AISuggestion]] = None
+    current_department: Optional[str] = None
 
 
 class DraftAnalysisRequest(BaseModel):
@@ -98,6 +99,11 @@ class DraftAnalysisResponse(BaseModel):
     rewrite: str
     workflow_stage: WorkflowStage
     workflow_memory: Dict[str, Any]
+
+
+class LibraryContextPreviewResponse(BaseModel):
+    library_context: str
+    has_context: bool
 
 
 class VisibilityResponse(BaseModel):

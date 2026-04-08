@@ -3,6 +3,14 @@ import { API_BASE, libraryApi, usersApi } from '../api';
 import { Modal, Spinner, TextPreview, useToast, fmtDateTime } from '../components/shared';
 import type { KnowledgeLibraryItem } from '../types';
 
+const DEPARTMENT_OPTIONS = [
+  { value: 'sales', label: 'Sales' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'counsellor', label: 'Counsellor' },
+  { value: 'academic', label: 'Academic' },
+  { value: 'founders', label: 'Founders' },
+] as const;
+
 type LibraryFormState = {
   title: string;
   section_key: string;
@@ -12,6 +20,7 @@ type LibraryFormState = {
   content_markdown: string;
   applies_to_doc_types: string;
   applies_to_stakeholders: string;
+  visible_to_departments: string;
   tags: string;
   sort_order: number;
   is_active: boolean;
@@ -26,6 +35,7 @@ const EMPTY_FORM: LibraryFormState = {
   content_markdown: '',
   applies_to_doc_types: '',
   applies_to_stakeholders: '',
+  visible_to_departments: '',
   tags: '',
   sort_order: 0,
   is_active: true,
@@ -42,13 +52,20 @@ function parseCsv(value: string) {
     .filter(Boolean);
 }
 
-  function badgeClass(isActive: boolean) {
-    return isActive ? 'status-pill status-pill-active' : 'status-pill status-pill-inactive';
-  }
+function badgeClass(isActive: boolean) {
+  return isActive ? 'status-pill status-pill-active' : 'status-pill status-pill-inactive';
+}
 
-  function formatConversationRole(role: 'user' | 'assistant') {
-    return role === 'user' ? 'Founder' : 'LLM';
-  }
+function formatConversationRole(role: 'user' | 'assistant') {
+  return role === 'user' ? 'Founder' : 'LLM';
+}
+
+function toggleDepartmentList(current: string, department: string) {
+  const values = parseCsv(current);
+  return values.includes(department)
+    ? values.filter(item => item !== department).join(', ')
+    : [...values, department].join(', ');
+}
 
 function resolveSourceUrl(path: string | null | undefined) {
   if (!path) return null;
@@ -202,6 +219,7 @@ export default function LibraryPage() {
       content_markdown: item.content_markdown,
       applies_to_doc_types: csvValue(item.applies_to_doc_types),
       applies_to_stakeholders: csvValue(item.applies_to_stakeholders),
+      visible_to_departments: csvValue(item.visible_to_departments),
       tags: csvValue(item.tags),
       sort_order: item.sort_order,
       is_active: item.is_active,
@@ -263,6 +281,7 @@ export default function LibraryPage() {
       content_markdown: data.content_markdown,
         applies_to_doc_types: csvValue(data.applies_to_doc_types),
         applies_to_stakeholders: csvValue(data.applies_to_stakeholders),
+        visible_to_departments: csvValue(data.visible_to_departments),
         tags: csvValue(data.tags),
         sort_order: data.sort_order,
         is_active: data.is_active,
@@ -292,6 +311,7 @@ export default function LibraryPage() {
         content_markdown: data.content_markdown,
         applies_to_doc_types: csvValue(data.applies_to_doc_types),
         applies_to_stakeholders: csvValue(data.applies_to_stakeholders),
+        visible_to_departments: csvValue(data.visible_to_departments),
         tags: csvValue(data.tags),
         sort_order: data.sort_order,
         is_active: data.is_active,
@@ -318,6 +338,7 @@ export default function LibraryPage() {
       content_markdown: form.content_markdown,
       applies_to_doc_types: parseCsv(form.applies_to_doc_types),
       applies_to_stakeholders: parseCsv(form.applies_to_stakeholders),
+      visible_to_departments: parseCsv(form.visible_to_departments),
       tags: parseCsv(form.tags),
       sort_order: form.sort_order,
       is_active: form.is_active,
@@ -336,6 +357,7 @@ export default function LibraryPage() {
       content_markdown: data.content_markdown,
       applies_to_doc_types: csvValue(data.applies_to_doc_types),
       applies_to_stakeholders: csvValue(data.applies_to_stakeholders),
+      visible_to_departments: csvValue(data.visible_to_departments),
       tags: csvValue(data.tags),
       sort_order: data.sort_order,
       is_active: data.is_active,
@@ -385,6 +407,7 @@ export default function LibraryPage() {
         fd.append('content_markdown', form.content_markdown);
         fd.append('applies_to_doc_types', form.applies_to_doc_types);
         fd.append('applies_to_stakeholders', form.applies_to_stakeholders);
+        fd.append('visible_to_departments', form.visible_to_departments);
         fd.append('tags', form.tags);
         fd.append('sort_order', String(form.sort_order));
         fd.append('is_active', String(form.is_active));
@@ -536,6 +559,9 @@ export default function LibraryPage() {
                           </div>
                           <div style={{ fontSize: 12.5, color: 'var(--ink-mid)' }}>
                             Stakeholders: {(item.applies_to_stakeholders ?? []).length ? item.applies_to_stakeholders?.join(', ') : 'Global'}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: 'var(--ink-mid)' }}>
+                            Departments: {(item.visible_to_departments ?? []).length ? item.visible_to_departments?.join(', ') : 'All'}
                           </div>
                           <div style={{ fontSize: 12.5, color: 'var(--ink-mid)' }}>
                             Tags: {(item.tags ?? []).length ? item.tags?.join(', ') : '—'}
@@ -869,6 +895,32 @@ export default function LibraryPage() {
                       onChange={e => setForm(prev => ({ ...prev, applies_to_stakeholders: e.target.value }))}
                       placeholder="parent, principal, student"
                     />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Visible to Departments</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    {DEPARTMENT_OPTIONS.map(option => {
+                      const active = parseCsv(form.visible_to_departments).includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`btn btn-outline btn-sm${active ? ' active' : ''}`}
+                          onClick={() => setForm(prev => ({
+                            ...prev,
+                            visible_to_departments: toggleDepartmentList(prev.visible_to_departments, option.value),
+                          }))}
+                        >
+                          {active ? '✓ ' : ''}
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-soft)' }}>
+                    Leave empty to make the item visible to all departments.
                   </div>
                 </div>
 
