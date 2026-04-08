@@ -1299,49 +1299,6 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>
               Click an item to add it as an @mention.
             </div>
-            {guidedLibraryItems.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                {guidedLibraryItems.map((item) => (
-                  <span
-                    key={item.id}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '8px 12px',
-                      borderRadius: 999,
-                      background: 'rgba(255, 101, 138, 0.16)',
-                      border: '1px solid var(--pink-500)',
-                      color: 'var(--ink)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 999, background: 'rgba(0,0,0,0.18)', fontSize: 11 }}>
-                      @
-                    </span>
-                    <span>{item.title}</span>
-                    <button
-                      type="button"
-                      onClick={() => setGuidedLibraryItems((prev) => prev.filter((selected) => selected.id !== item.id))}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'inherit',
-                        cursor: 'pointer',
-                        padding: 0,
-                        marginLeft: 2,
-                        fontSize: 14,
-                        lineHeight: 1,
-                      }}
-                      aria-label={`Remove ${item.title}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
             {libraryContextLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)', fontSize: 12.5 }}>
                 <Spinner />
@@ -1520,7 +1477,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           )}
 
           <div
-            style={{ position: 'relative' }}
+            style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10 }}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setChatInputDragOver(true); }}
             onDragLeave={() => setChatInputDragOver(false)}
             onDrop={(e) => {
@@ -1531,6 +1488,49 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               toggleLibraryTag(title);
             }}
           >
+            {guidedLibraryItems.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {guidedLibraryItems.map((item) => (
+                  <span
+                    key={item.id}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderRadius: 999,
+                      background: 'rgba(255, 101, 138, 0.16)',
+                      border: '1px solid var(--pink-500)',
+                      color: 'var(--ink)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 999, background: 'rgba(0,0,0,0.18)', fontSize: 11 }}>
+                      @
+                    </span>
+                    <span>{item.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => setGuidedLibraryItems((prev) => prev.filter((selected) => selected.id !== item.id))}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        padding: 0,
+                        marginLeft: 2,
+                        fontSize: 14,
+                        lineHeight: 1,
+                      }}
+                      aria-label={`Remove ${item.title}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
               <textarea
                 className="form-textarea"
                 style={{
