@@ -277,6 +277,7 @@ class KnowledgeLibraryItem(Base):
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     applies_to_doc_types: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     applies_to_stakeholders: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    visible_to_departments: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

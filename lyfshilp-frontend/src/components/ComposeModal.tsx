@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
 import { adminApi, submissionsApi } from '../api';
-import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse, LLMMode } from '../types';
+import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview } from '../types';
 
 interface ChatMessage {
   role: 'user' | 'ai';
@@ -162,6 +162,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [refining, setRefining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [libraryContextPreview, setLibraryContextPreview] = useState<LibraryContextPreview | null>(null);
+  const [libraryContextLoading, setLibraryContextLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Suggestions from the most recent AI message
@@ -218,6 +220,20 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       .then(({ data }) => setDocTypes(data))
       .catch(() => toast('error', 'Could not load document types'));
   }, []);
+
+  useEffect(() => {
+    if (step !== 'context' || !docType || !stakeholder) {
+      setLibraryContextPreview(null);
+      setLibraryContextLoading(false);
+      return;
+    }
+
+    setLibraryContextLoading(true);
+    submissionsApi.libraryContext(docType, stakeholder)
+      .then(({ data }) => setLibraryContextPreview(data))
+      .catch(() => setLibraryContextPreview({ library_context: '', has_context: false }))
+      .finally(() => setLibraryContextLoading(false));
+  }, [step, docType, stakeholder]);
 
   const currentFieldDefs = docType ? (DOC_TYPE_CONTEXT_FIELDS[docType] ?? DEFAULT_CONTEXT_FIELDS) : DEFAULT_CONTEXT_FIELDS;
   const visibleFieldDefs = currentFieldDefs.some((field) => field.key === EXTRA_CONTEXT_FIELD.key)
@@ -557,6 +573,39 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, flex: 1, alignContent: 'start' }}>
+            <div className="form-group" style={{ gridColumn: '1 / -1', marginBottom: 2 }}>
+              <label className="form-label">Founder Library Context</label>
+              <div style={{
+                border: '1px solid var(--border)',
+                borderRadius: 14,
+                background: 'var(--white)',
+                padding: 16,
+                minHeight: 120,
+              }}>
+                {libraryContextLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-soft)' }}>
+                    <Spinner />
+                    Loading matching founder library context...
+                  </div>
+                ) : libraryContextPreview?.has_context ? (
+                  <pre style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily: 'DM Mono, monospace',
+                    fontSize: 12.5,
+                    lineHeight: 1.65,
+                    color: 'var(--ink)',
+                  }}>
+                    {libraryContextPreview.library_context}
+                  </pre>
+                ) : (
+                  <div style={{ color: 'var(--ink-soft)', fontSize: 13, lineHeight: 1.6 }}>
+                    No founder library items match this document type and stakeholder yet.
+                  </div>
+                )}
+              </div>
+            </div>
             {visibleFieldDefs.map((field) => (
               <div
                 key={field.key}
@@ -638,7 +687,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               value={thinkingInstructions}
               onChange={e => setThinkingInstructions(e.target.value)}
               placeholder="Example: Think like a senior Lyfshilp editor. Lead with the outcome, keep sentences short, avoid salesy phrasing, and never ask me for confirmation unless you truly need a missing fact."
-              minHeight={110}
+              minHeight={160}
               style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
             />
             <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
@@ -865,13 +914,52 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               value={thinkingInstructions}
               onChange={e => setThinkingInstructions(e.target.value)}
               placeholder="Tell the AI exactly what to prioritize, what to avoid, and how to reason about this draft."
-              minHeight={84}
+              minHeight={150}
               style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
             />
             <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ink-soft)' }}>
               {trimmedThinkingInstructions
                 ? 'These instructions will be prepended to every generation and refinement request in this session.'
                 : 'Leave this blank for autonomous drafting with best-effort assumptions.'}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 14, padding: 16, background: 'var(--white)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Founder Library Context
+            </div>
+            <div style={{
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              background: 'var(--surface)',
+              padding: 14,
+              minHeight: 110,
+            }}>
+              {libraryContextLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-soft)' }}>
+                  <Spinner />
+                  Loading matching founder library context...
+                </div>
+              ) : libraryContextPreview?.has_context ? (
+                <pre style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontFamily: 'DM Mono, monospace',
+                  fontSize: 12.5,
+                  lineHeight: 1.65,
+                  color: 'var(--ink)',
+                }}>
+                  {libraryContextPreview.library_context}
+                </pre>
+              ) : (
+                <div style={{ color: 'var(--ink-soft)', fontSize: 13, lineHeight: 1.6 }}>
+                  No founder library items match this document type and stakeholder yet.
+                </div>
+              )}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+              Matched for: {docType ? docType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unknown'} → {stakeholder ? stakeholder.charAt(0).toUpperCase() + stakeholder.slice(1) : 'Unknown'}
             </div>
           </div>
 
@@ -1040,7 +1128,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           <div style={{ position: 'relative' }}>
             <textarea
               className="form-textarea"
-              style={{ minHeight: 60, paddingRight: 60, paddingBottom: 16, paddingTop: 16, resize: 'none' }}
+              style={{ minHeight: 130, paddingRight: 60, paddingBottom: 16, paddingTop: 16, resize: 'none' }}
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => {

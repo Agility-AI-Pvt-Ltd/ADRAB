@@ -13,6 +13,7 @@ from schemas.submission import (
     DraftAnalysisRequest,
     DraftWorkflowResponse,
     GenerateDraftRequest,
+    LibraryContextPreviewResponse,
     RefineDraftRequest,
     ReviewAction,
     SubmissionCreate,
@@ -40,6 +41,18 @@ async def generate_draft(
     """
     service = SubmissionService(session)
     return await service.generate_draft(body, current_user)
+
+
+@router.get("/library-context", response_model=LibraryContextPreviewResponse)
+async def library_context_preview(
+    doc_type: str = Query(...),
+    stakeholder: Stakeholder = Query(...),
+    current_user: CurrentUser = None,
+    session: DBSession = None,
+):
+    """Preview founder library context matched for this doc type and stakeholder."""
+    service = SubmissionService(session)
+    return await service.library_context_preview(doc_type, stakeholder, current_user)
 
 
 @router.post("/refine-draft", response_model=DraftWorkflowResponse)

@@ -17,6 +17,7 @@ class DraftGenerationInput:
     context_form_data: dict[str, Any]
     llm_mode: str = "guided"
     thinking_instructions: str | None = None
+    current_department: str | None = None
 
 
 @dataclass(slots=True)
@@ -32,6 +33,7 @@ class DraftReviewInput:
     doc_type: str
     stakeholder: Stakeholder
     content: str
+    current_department: str | None = None
 
 
 @dataclass(slots=True)
@@ -56,6 +58,7 @@ class DraftGenerationState(TypedDict, total=False):
     context_form_data: dict[str, Any]
     llm_mode: str
     thinking_instructions: str | None
+    current_department: str | None
     ai_service: AIService
     deterministic_context: str
     enrichment_context: str
@@ -70,6 +73,7 @@ class DraftReviewState(TypedDict, total=False):
     doc_type: str
     stakeholder: Stakeholder
     content: str
+    current_department: str | None
     ai_service: AIService
     deterministic_context: str
     review_context: str
@@ -82,6 +86,7 @@ class DraftReviewState(TypedDict, total=False):
 
 class DraftRefinementState(TypedDict, total=False):
     request: RefineDraftRequest
+    current_department: str | None
     ai_service: AIService
     deterministic_context: str
     enrichment_context: str

@@ -3,7 +3,7 @@ import type {
   TokenResponse, User, Submission, DashboardData,
   SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse, DraftWorkflowResponse, KnowledgeLibraryItem,
   LLMMode,
-  GoogleDriveAuthUrl, GoogleDriveConnectionStatus, GoogleDriveFile
+  GoogleDriveAuthUrl, GoogleDriveConnectionStatus, GoogleDriveFile, LibraryContextPreview
 } from '../types';
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -109,6 +109,11 @@ export const submissionsApi = {
     fd.append('file', file);
     return client.post<{ file_name: string; extracted_text: string | null }>('/submissions/extract-file', fd);
   },
+
+  libraryContext: (doc_type: DocumentType, stakeholder: Stakeholder) =>
+    client.get<LibraryContextPreview>('/submissions/library-context', {
+      params: { doc_type, stakeholder },
+    }),
 
   create: (
     doc_type: DocumentType,
@@ -239,6 +244,7 @@ export const libraryApi = {
     content_markdown: string;
     applies_to_doc_types?: string[] | null;
     applies_to_stakeholders?: string[] | null;
+    visible_to_departments?: string[] | null;
     tags?: string[] | null;
     sort_order?: number;
     is_active?: boolean;

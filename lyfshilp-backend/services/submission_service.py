@@ -34,6 +34,7 @@ from schemas.submission import (
     DraftAnalysisResponse,
     DraftWorkflowResponse,
     GenerateDraftRequest,
+    LibraryContextPreviewResponse,
     RefineDraftRequest,
     ReviewAction,
     SubmissionCreate,
@@ -69,6 +70,7 @@ class SubmissionService:
                 context_form_data=request.context_form_data.fields,
                 llm_mode=request.llm_mode,
                 thinking_instructions=request.thinking_instructions,
+                current_department=actor.department.value if actor.department else None,
             )
         )
         return DraftWorkflowResponse(
@@ -86,6 +88,7 @@ class SubmissionService:
                 doc_type=request.doc_type,
                 stakeholder=request.stakeholder,
                 content=request.content,
+                current_department=actor.department.value if actor.department else None,
             )
         )
         return DraftAnalysisResponse(
@@ -102,11 +105,28 @@ class SubmissionService:
         """Apply a refinement action (shorter, warmer, etc.) to draft text."""
         await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
+        request = request.model_copy(update={
+            "current_department": actor.department.value if actor.department else None,
+        })
         result = await self._workflow_service.refine_draft(request)
         return DraftWorkflowResponse(
             draft=result.draft,
             workflow_stage=result.workflow_stage,
             workflow_memory=result.workflow_memory,
+        )
+
+    async def library_context_preview(self, doc_type: str, stakeholder: Stakeholder, actor: User) -> LibraryContextPreviewResponse:
+        """Preview matched founder library context before generation."""
+        await self._workflow_memory_service.ensure_schema()
+        self._require_team_member(actor)
+        context = await self._prompt_context_service.build_generation_context(
+            doc_type,
+            stakeholder,
+            current_department=actor.department.value if actor.department else None,
+        )
+        return LibraryContextPreviewResponse(
+            library_context=context.library_context,
+            has_context=bool(context.library_context.strip()),
         )
 
     # ── Submission lifecycle ──────────────────────────────────────────────────
