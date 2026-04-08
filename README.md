@@ -215,6 +215,35 @@ Reusable seed scripts:
 - `scripts/seed_few_shot_examples.py`
 - `scripts/import_knowledge_snippet.py`
 
+## Database Migrations
+
+This repo now includes Alembic for intentional schema changes.
+
+Recommended flow:
+
+1. Make your model/schema change in code.
+2. Add or update an Alembic migration in `lyfshilp-backend/alembic/versions/`.
+3. Apply the same migration locally and in Neon.
+
+Run migrations with:
+
+```bash
+cd lyfshilp-backend
+alembic upgrade head
+```
+
+To point Alembic at Neon, set `DATABASE_URL` to the Neon connection string in `.env` before running the command.
+If you want to keep your local `.env` unchanged, use the dedicated Neon file instead:
+
+```bash
+set -a
+source .env.neon
+set +a
+alembic upgrade head
+```
+
+The baseline migration is `0001_initial_schema`, which safely creates any missing tables from the current SQLAlchemy metadata. For new changes after that, add proper forward-only migrations instead of relying on `create_all()`.
+
 ## Founder Library
 
 Founders can upload PDFs, DOCX files, TXT files, or paste markdown into the Library section.

@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { API_BASE, libraryApi, usersApi } from '../api';
+import { API_BASE, libraryApi, submissionsApi, usersApi } from '../api';
 import { Modal, Spinner, TextPreview, useToast, fmtDateTime } from '../components/shared';
 import type { KnowledgeLibraryItem } from '../types';
+
+type ChoiceOption = {
+  value: string;
+  label: string;
+};
 
 const DEPARTMENT_OPTIONS = [
   { value: 'sales', label: 'Sales' },
@@ -67,6 +72,13 @@ function toggleDepartmentList(current: string, department: string) {
     : [...values, department].join(', ');
 }
 
+function toggleChoiceList(current: string, choice: string) {
+  const values = parseCsv(current);
+  return values.includes(choice)
+    ? values.filter(item => item !== choice).join(', ')
+    : [...values, choice].join(', ');
+}
+
 function resolveSourceUrl(path: string | null | undefined) {
   if (!path) return null;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -105,6 +117,13 @@ export default function LibraryPage() {
     size_bytes: number | null;
   }>>([]);
   const [selectedDriveFileId, setSelectedDriveFileId] = useState('');
+  const [docTypeOptions, setDocTypeOptions] = useState<ChoiceOption[]>([]);
+  const [stakeholderOptions, setStakeholderOptions] = useState<ChoiceOption[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [bulkDocTypes, setBulkDocTypes] = useState('');
+  const [bulkStakeholders, setBulkStakeholders] = useState('');
+  const [bulkDocTypeScope, setBulkDocTypeScope] = useState<'unset' | 'all' | 'selected'>('unset');
+  const [bulkStakeholderScope, setBulkStakeholderScope] = useState<'unset' | 'all' | 'selected'>('unset');
   const [form, setForm] = useState<LibraryFormState>(EMPTY_FORM);
 
   async function load() {
@@ -119,6 +138,26 @@ export default function LibraryPage() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    setSelectedItemIds(prev => prev.filter(id => items.some(item => item.id === id)));
+  }, [items]);
+
+  useEffect(() => {
+    submissionsApi.composeOptions()
+      .then(({ data }) => {
+        setDocTypeOptions(
+          data.document_guidance.map(item => ({
+            value: item.doc_type,
+            label: item.title,
+          }))
+        );
+        setStakeholderOptions(data.stakeholders);
+      })
+      .catch(() => {
+        toast('error', 'Could not load library selection options');
+      });
   }, []);
 
   useEffect(() => {
@@ -186,6 +225,11 @@ export default function LibraryPage() {
     fileBacked: items.filter(item => item.source_kind !== 'manual').length,
   };
 
+  const selectedDocTypes = useMemo(() => parseCsv(form.applies_to_doc_types), [form.applies_to_doc_types]);
+  const selectedStakeholders = useMemo(() => parseCsv(form.applies_to_stakeholders), [form.applies_to_stakeholders]);
+  const selectedBulkDocTypes = useMemo(() => parseCsv(bulkDocTypes), [bulkDocTypes]);
+  const selectedBulkStakeholders = useMemo(() => parseCsv(bulkStakeholders), [bulkStakeholders]);
+
   function openCreate() {
     setEditingItem(null);
     setForm(EMPTY_FORM);
@@ -225,6 +269,15 @@ export default function LibraryPage() {
       is_active: item.is_active,
     });
   }
+
+  function toggleSelectedItem(itemId: string) {
+    setSelectedItemIds(prev => (
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    ));
+  }
+
 
   function closeModal() {
     setCreating(false);
@@ -448,6 +501,45 @@ export default function LibraryPage() {
     }
   }
 
+  async function applyBulkScope() {
+    if (selectedItemIds.length === 0) {
+      toast('error', 'Select one or more library items first');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const docTypes = parseCsv(bulkDocTypes);
+      const stakeholders = parseCsv(bulkStakeholders);
+      const targets = items.filter(item => selectedItemIds.includes(item.id));
+      await Promise.all(targets.map(item => libraryApi.update(item.id, {
+        title: item.title,
+        section_key: item.section_key,
+        section_label: item.section_label,
+        description: item.description,
+        source_file_url: item.source_file_url,
+        content_markdown: item.content_markdown,
+        applies_to_doc_types: docTypes,
+        applies_to_stakeholders: stakeholders,
+        visible_to_departments: item.visible_to_departments,
+        tags: item.tags,
+        sort_order: item.sort_order,
+        is_active: item.is_active,
+      })));
+      toast('success', 'Applied scope to selected library items');
+      setBulkDocTypes('');
+      setBulkStakeholders('');
+      setBulkDocTypeScope('unset');
+      setBulkStakeholderScope('unset');
+      setSelectedItemIds([]);
+      await load();
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Could not apply scope to selected items');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="content">
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
@@ -512,6 +604,101 @@ export default function LibraryPage() {
         <button className="btn btn-outline btn-sm" onClick={load}>↺ Refresh</button>
       </div>
 
+      {selectedItemIds.length > 0 && (
+        <div className="table-card" style={{ marginBottom: 18 }}>
+          <div className="table-header" style={{ alignItems: 'center', gap: 16 }}>
+            <div>
+              <div className="table-title">Bulk Scope Update</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>
+                {selectedItemIds.length} selected item{selectedItemIds.length !== 1 ? 's' : ''}. Apply doc types and stakeholders to all selected items.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => setSelectedItemIds(filtered.map(item => item.id))}
+              >
+                Select All Visible
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={() => setSelectedItemIds([])}>
+                Clear Selection
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 16, marginTop: 14 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Applies to Doc Types</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <button
+                  type="button"
+                  className={`btn btn-outline btn-sm${bulkDocTypeScope === 'all' ? ' active' : ''}`}
+                  onClick={() => {
+                    setBulkDocTypes('');
+                    setBulkDocTypeScope('all');
+                  }}
+                >
+                  All
+                </button>
+                {docTypeOptions.map(option => {
+                  const active = selectedBulkDocTypes.includes(option.value);
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`btn btn-outline btn-sm${active ? ' active' : ''}`}
+                      onClick={() => {
+                        setBulkDocTypes(prev => toggleChoiceList(prev, option.value));
+                        setBulkDocTypeScope('selected');
+                      }}
+                    >
+                      {active ? '✓ ' : ''}
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Applies to Stakeholders</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <button
+                  type="button"
+                  className={`btn btn-outline btn-sm${bulkStakeholderScope === 'all' ? ' active' : ''}`}
+                  onClick={() => {
+                    setBulkStakeholders('');
+                    setBulkStakeholderScope('all');
+                  }}
+                >
+                  All
+                </button>
+                {stakeholderOptions.map(option => {
+                  const active = selectedBulkStakeholders.includes(option.value);
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`btn btn-outline btn-sm${active ? ' active' : ''}`}
+                      onClick={() => {
+                        setBulkStakeholders(prev => toggleChoiceList(prev, option.value));
+                        setBulkStakeholderScope('selected');
+                      }}
+                    >
+                      {active ? '✓ ' : ''}
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={applyBulkScope} disabled={saving}>
+                {saving ? 'Applying…' : 'Apply to Selected Items'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ padding: 48, textAlign: 'center' }}>
           <Spinner dark />
@@ -532,6 +719,22 @@ export default function LibraryPage() {
               <table>
                 <thead>
                   <tr>
+                    <th style={{ width: 42 }}>
+                      <input
+                        type="checkbox"
+                        checked={group.items.length > 0 && group.items.every(item => selectedItemIds.includes(item.id))}
+                        onChange={() => {
+                          const ids = group.items.map(item => item.id);
+                          const allSelected = ids.every(id => selectedItemIds.includes(id));
+                          setSelectedItemIds(prev => (
+                            allSelected
+                              ? prev.filter(id => !ids.includes(id))
+                              : Array.from(new Set([...prev, ...ids]))
+                          ));
+                        }}
+                        aria-label={`Select all items in ${group.section}`}
+                      />
+                    </th>
                     <th>Title</th>
                     <th>Scope</th>
                     <th>Source</th>
@@ -543,6 +746,14 @@ export default function LibraryPage() {
                 <tbody>
                   {group.items.map(item => (
                     <tr key={item.id}>
+                      <td style={{ width: 42 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedItemIds.includes(item.id)}
+                          onChange={() => toggleSelectedItem(item.id)}
+                          aria-label={`Select ${item.title}`}
+                        />
+                      </td>
                       <td style={{ minWidth: 260 }}>
                         <div style={{ display: 'grid', gap: 6 }}>
                           <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{item.title}</div>
@@ -880,21 +1091,67 @@ export default function LibraryPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label className="form-label">Applies to Doc Types</label>
-                    <input
-                      className="form-input"
-                      value={form.applies_to_doc_types}
-                      onChange={e => setForm(prev => ({ ...prev, applies_to_doc_types: e.target.value }))}
-                      placeholder="proposal, whatsapp, cold_email"
-                    />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                      <button
+                        type="button"
+                        className={`btn btn-outline btn-sm${selectedDocTypes.length === 0 ? ' active' : ''}`}
+                        onClick={() => setForm(prev => ({ ...prev, applies_to_doc_types: '' }))}
+                      >
+                        All
+                      </button>
+                      {docTypeOptions.map(option => {
+                        const active = selectedDocTypes.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={`btn btn-outline btn-sm${active ? ' active' : ''}`}
+                            onClick={() => setForm(prev => ({
+                              ...prev,
+                              applies_to_doc_types: toggleChoiceList(prev.applies_to_doc_types, option.value),
+                            }))}
+                          >
+                            {active ? '✓ ' : ''}
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-soft)' }}>
+                      Leave empty to make the item visible to all doc types.
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Applies to Stakeholders</label>
-                    <input
-                      className="form-input"
-                      value={form.applies_to_stakeholders}
-                      onChange={e => setForm(prev => ({ ...prev, applies_to_stakeholders: e.target.value }))}
-                      placeholder="parent, principal, student"
-                    />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                      <button
+                        type="button"
+                        className={`btn btn-outline btn-sm${selectedStakeholders.length === 0 ? ' active' : ''}`}
+                        onClick={() => setForm(prev => ({ ...prev, applies_to_stakeholders: '' }))}
+                      >
+                        All
+                      </button>
+                      {stakeholderOptions.map(option => {
+                        const active = selectedStakeholders.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={`btn btn-outline btn-sm${active ? ' active' : ''}`}
+                            onClick={() => setForm(prev => ({
+                              ...prev,
+                              applies_to_stakeholders: toggleChoiceList(prev.applies_to_stakeholders, option.value),
+                            }))}
+                          >
+                            {active ? '✓ ' : ''}
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-soft)' }}>
+                      Leave empty to make the item visible to all stakeholders.
+                    </div>
                   </div>
                 </div>
 

@@ -105,6 +105,16 @@
 [data-theme="dark"] .btn-outline:hover:not(:disabled) {
   background: #1e1e1e; border-color: var(--green-700); color: var(--green-700);
 }
+[data-theme="dark"] .btn-outline.active {
+  background: var(--green-700);
+  border-color: var(--green-700);
+  color: #111111;
+}
+[data-theme="dark"] .btn-outline.active:hover:not(:disabled) {
+  background: #ff7c98;
+  border-color: #ff7c98;
+  color: #111111;
+}
 [data-theme="dark"] .btn-ghost { color: var(--ink-soft); }
 [data-theme="dark"] .btn-ghost:hover:not(:disabled) { background: #1e1e1e; color: var(--ink); }
 [data-theme="dark"] .btn-google { background: #1e1e1e; border-color: var(--border); color: var(--ink); }
@@ -703,6 +713,16 @@ body {
 
 .btn-outline { background: transparent; color: var(--ink-mid); border: 1px solid var(--border); }
 .btn-outline:hover:not(:disabled) { background: var(--green-50); border-color: var(--green-400); color: var(--green-900); }
+.btn-outline.active {
+  background: var(--green-900);
+  border-color: var(--green-900);
+  color: white;
+}
+.btn-outline.active:hover:not(:disabled) {
+  background: var(--green-800);
+  border-color: var(--green-800);
+  color: white;
+}
 
 .btn-ghost { background: transparent; color: var(--ink-soft); padding: 8px 10px; }
 .btn-ghost:hover:not(:disabled) { background: var(--green-50); color: var(--green-900); }
