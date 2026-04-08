@@ -154,8 +154,8 @@ export const submissionsApi = {
       precheck_workflow_memory: options?.precheck_workflow_memory,
     }),
 
-  submit: (id: string) =>
-    client.post<Submission>(`/submissions/${id}/submit`),
+  submit: (id: string, body: { assigned_founder_ids: string[] }) =>
+    client.post<Submission>(`/submissions/${id}/submit`, body),
 
   uploadFile: (id: string, file: File) => {
     const fd = new FormData();
@@ -260,6 +260,7 @@ export const libraryApi = {
 // ── Users ───────────────────────────────────────────────────────────────────
 export const usersApi = {
   list: () => client.get<User[]>('/users/'),
+  founders: () => client.get<User[]>('/users/founders'),
   createFounder: (body: { name: string; email: string; password: string; department?: 'founders' | null }) =>
     client.post<User>('/users/founders', body),
   me: () => client.get<User>('/users/me/profile'),

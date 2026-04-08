@@ -18,6 +18,7 @@ from schemas.user import (
 from schemas.user import (
     ChangePasswordRequest,
     DeleteAccountRequest,
+    FounderSelectResponse,
     SelfUserUpdate,
     UserCreate,
     UserResponse,
@@ -34,6 +35,14 @@ async def list_users(session: DBSession):
     """Founders & admins: list all users, with pending team-member approvals first."""
     repo = UserRepository(session)
     return await repo.get_all_users()
+
+
+@router.get("/founders", response_model=List[FounderSelectResponse])
+async def list_active_founders(current_user: CurrentUser, session: DBSession):
+    """Authenticated users can see active founders to route a submission for review."""
+    repo = UserRepository(session)
+    founders = await repo.get_active_founders()
+    return founders
 
 
 @router.post("/founders", response_model=UserResponse, status_code=201, dependencies=[FounderOnly])

@@ -42,6 +42,10 @@ SUBMISSION_PAYLOAD = {
 }
 
 
+def submit_payload(founder_user):
+    return {"assigned_founder_ids": [str(founder_user.id)]}
+
+
 @pytest.mark.asyncio
 async def test_create_submission(client: AsyncClient, team_member):
     resp = await client.post(
@@ -74,6 +78,7 @@ async def test_submit_for_review(client: AsyncClient, team_member):
     ):
         resp = await client.post(
             f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
             headers=auth_headers(team_member),
         )
 
@@ -185,6 +190,7 @@ async def test_existing_draft_precheck_is_reused_on_submit(client: AsyncClient, 
     ):
         submit_resp = await client.post(
             f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
             headers=auth_headers(team_member),
         )
 
@@ -193,6 +199,36 @@ async def test_existing_draft_precheck_is_reused_on_submit(client: AsyncClient, 
     assert data["ai_score"] == 78
     assert data["ai_scorecard"]["grammar_check"]["score"] == 17
     assert data["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_team_member_can_view_own_version_history(client: AsyncClient, team_member, founder_user):
+    create_resp = await client.post(
+        "/api/v1/submissions/",
+        json=SUBMISSION_PAYLOAD,
+        headers=auth_headers(team_member),
+    )
+    sub_id = create_resp.json()["id"]
+
+    with patch(
+        "services.ai_service.AIService.review_document",
+        new_callable=AsyncMock,
+        return_value=MOCK_SCORECARD,
+    ):
+        await client.post(
+            f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
+            headers=auth_headers(team_member),
+        )
+
+    resp = await client.get(
+        f"/api/v1/submissions/{sub_id}/versions",
+        headers=auth_headers(team_member),
+    )
+    assert resp.status_code == 200
+    history = resp.json()
+    assert len(history) == 1
+    assert history[0]["id"] == sub_id
 
 
 @pytest.mark.asyncio
@@ -212,6 +248,7 @@ async def test_founder_can_approve(client: AsyncClient, team_member, founder_use
     ):
         await client.post(
             f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
             headers=auth_headers(team_member),
         )
 
@@ -241,6 +278,7 @@ async def test_founder_can_update_visibility_after_approval(client: AsyncClient,
     ):
         await client.post(
             f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
             headers=auth_headers(team_member),
         )
 
@@ -276,6 +314,7 @@ async def test_rejected_submission_returns_founder_feedback_to_member(client: As
     ):
         await client.post(
             f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
             headers=auth_headers(team_member),
         )
 

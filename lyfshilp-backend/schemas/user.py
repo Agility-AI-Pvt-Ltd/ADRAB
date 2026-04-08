@@ -52,6 +52,14 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FounderSelectResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: EmailStr
+
+    model_config = {"from_attributes": True}
+
+
 class GoogleDriveAuthUrlResponse(BaseModel):
     url: str
     state: str

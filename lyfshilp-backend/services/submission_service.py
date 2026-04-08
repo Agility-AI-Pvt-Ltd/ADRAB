@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from core.logging import get_logger
 from db.repositories.submission_repository import SubmissionRepository
+from db.repositories.user_repository import UserRepository
 from models.models import (
     AuditLog,
     Feedback,
@@ -36,6 +37,7 @@ from schemas.submission import (
     DraftWorkflowResponse,
     GenerateDraftRequest,
     LibraryContextPreviewResponse,
+    SubmitForReviewRequest,
     RefineDraftRequest,
     ReviewAction,
     SubmissionCreate,
@@ -55,6 +57,7 @@ class SubmissionService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._submission_repo = SubmissionRepository(session)
+        self._user_repo = UserRepository(session)
         self._prompt_context_service = SubmissionPromptContextService(session)
         self._workflow_service = SubmissionWorkflowService(self._prompt_context_service)
         self._workflow_memory_service = SubmissionWorkflowMemoryService(session)
@@ -182,13 +185,27 @@ class SubmissionService:
         refreshed = await self._submission_repo.get_with_relations(submission.id)
         return refreshed or submission
 
-    async def submit_for_review(self, submission_id: UUID, actor: User) -> Submission:
+    async def submit_for_review(
+        self,
+        submission_id: UUID,
+        actor: User,
+        reviewer_ids: Optional[list[UUID]] = None,
+    ) -> Submission:
         """Run AI pre-check then mark submission as PENDING."""
         await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
         submission = await self._get_owned_submission(submission_id, actor)
         if submission.status not in (SubmissionStatus.DRAFT, SubmissionStatus.REJECTED):
             raise ValidationError("Only draft or rejected submissions can be (re)submitted.")
+
+        selected_reviewers = [str(user_id) for user_id in (reviewer_ids or [])]
+        if not selected_reviewers:
+            raise ValidationError("Please select at least one founder to review this submission.")
+        valid_founders = await self._user_repo.get_active_founders()
+        valid_founder_ids = {str(founder.id) for founder in valid_founders}
+        invalid_reviewers = [user_id for user_id in selected_reviewers if user_id not in valid_founder_ids]
+        if invalid_reviewers:
+            raise ValidationError("One or more selected reviewers are not valid founders.")
 
         if self._has_persisted_precheck(submission):
             scorecard = submission.ai_scorecard
@@ -204,6 +221,16 @@ class SubmissionService:
             scorecard = review_result.scorecard.model_dump()
             workflow_memory = review_result.workflow_memory
 
+        workflow_memory = self._workflow_memory_service.append_event(
+            workflow_memory,
+            stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
+            payload={
+                "label": "Submission sent to founder review",
+                "assigned_founder_ids": selected_reviewers,
+            },
+        )
+        workflow_memory["assigned_founder_ids"] = selected_reviewers
+
         await self._submission_repo.update(
             submission,
             ai_score=scorecard["score"],
@@ -212,11 +239,7 @@ class SubmissionService:
             ai_rewrite=scorecard["rewrite"],
             status=SubmissionStatus.PENDING,
             workflow_stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
-            workflow_memory=self._workflow_memory_service.append_event(
-                workflow_memory,
-                stage=WorkflowStage.SUBMITTED_TO_FOUNDER,
-                payload={"label": "Submission sent to founder review"},
-            ),
+            workflow_memory=workflow_memory,
             submitted_at=datetime.now(timezone.utc),
         )
 
@@ -374,7 +397,11 @@ class SubmissionService:
         )
         new_version = await self._submission_repo.create(new_version)
         await self._log(actor, "submission.resubmit", "submission", str(new_version.id))
-        return await self.submit_for_review(new_version.id, actor)
+        original_reviewer_ids = [
+            UUID(item)
+            for item in ((original.workflow_memory or {}).get("assigned_founder_ids") or [])
+        ]
+        return await self.submit_for_review(new_version.id, actor, original_reviewer_ids)
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -390,11 +417,18 @@ class SubmissionService:
         pending = await self._submission_repo.get_pending_for_founders(
             doc_type=doc_type, stakeholder=stakeholder, user_id=user_id
         )
+        if founder.role == UserRole.FOUNDER:
+            pending = [
+                sub for sub in pending
+                if self._is_visible_to_founder(sub, founder)
+            ]
         approved = await self._submission_repo.get_approved_for_founders(
             doc_type=doc_type, stakeholder=stakeholder, user_id=user_id
         )
         recent = await self._submission_repo.get_recent_activity_for_founders()
         counts = await self._submission_repo.count_by_status()
+        if founder.role == UserRole.FOUNDER:
+            counts["pending"] = len(pending)
         return {"counts": counts, "pending": pending, "approved": approved, "recent": recent}
 
     async def get_my_submissions(self, actor: User) -> List[Submission]:
@@ -437,8 +471,18 @@ class SubmissionService:
 
     async def get_version_history(self, submission_id: UUID, actor: User) -> List[Submission]:
         await self._workflow_memory_service.ensure_schema()
-        self._require_founder(actor)
-        return await self._submission_repo.get_version_history(submission_id)
+        await self._ensure_visibility_schema()
+
+        submission = await self._submission_repo.get_with_relations(submission_id)
+        if submission is None:
+            raise NotFoundError(f"Submission '{submission_id}' not found.")
+
+        if actor.role not in (UserRole.FOUNDER, UserRole.ADMIN):
+            if submission.user_id != actor.id and not self._can_access_shared_submission(submission, actor):
+                raise ForbiddenError("You do not have access to this submission history.")
+
+        root_id = await self._resolve_version_root_id(submission_id)
+        return await self._submission_repo.get_version_history(root_id)
 
     async def download_submission_file(self, submission_id: UUID, actor: User) -> FileResponse:
         submission = await self.get_submission_detail(submission_id, actor)
@@ -513,3 +557,17 @@ class SubmissionService:
             and submission.ai_suggestions is not None
             and submission.ai_rewrite
         )
+
+    @staticmethod
+    def _is_visible_to_founder(submission: Submission, founder: User) -> bool:
+        memory = submission.workflow_memory or {}
+        assigned_founder_ids = set(str(item) for item in (memory.get("assigned_founder_ids") or []))
+        return not assigned_founder_ids or str(founder.id) in assigned_founder_ids
+
+    async def _resolve_version_root_id(self, submission_id: UUID) -> UUID:
+        current = await self._submission_repo.get_or_raise(submission_id)
+        seen: set[UUID] = set()
+        while current.parent_submission_id is not None and current.parent_submission_id not in seen:
+            seen.add(current.id)
+            current = await self._submission_repo.get_or_raise(current.parent_submission_id)
+        return current.id

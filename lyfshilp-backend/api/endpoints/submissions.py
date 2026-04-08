@@ -15,6 +15,7 @@ from schemas.submission import (
     DraftWorkflowResponse,
     GenerateDraftRequest,
     LibraryContextPreviewResponse,
+    SubmitForReviewRequest,
     RefineDraftRequest,
     ReviewAction,
     SubmissionCreate,
@@ -139,6 +140,7 @@ async def create_submission(
 @router.post("/{submission_id}/submit", response_model=SubmissionResponse)
 async def submit_for_review(
     submission_id: UUID,
+    body: SubmitForReviewRequest,
     current_user: CurrentUser,
     session: DBSession,
 ):
@@ -147,7 +149,7 @@ async def submit_for_review(
     Returns the updated submission with full AI scorecard attached.
     """
     service = SubmissionService(session)
-    return await service.submit_for_review(submission_id, current_user)
+    return await service.submit_for_review(submission_id, current_user, body.assigned_founder_ids)
 
 
 @router.post("/{submission_id}/upload-file")

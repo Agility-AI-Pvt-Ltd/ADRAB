@@ -193,3 +193,7 @@ class VisibilityUpdateRequest(BaseModel):
     visible_to_roles: Optional[List[str]] = None
     visible_to_departments: Optional[List[str]] = None
     visible_to_user_ids: Optional[List[uuid.UUID]] = None
+
+
+class SubmitForReviewRequest(BaseModel):
+    assigned_founder_ids: List[uuid.UUID] = Field(default_factory=list, min_length=1)

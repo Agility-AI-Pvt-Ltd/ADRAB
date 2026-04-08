@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
-import { libraryApi, submissionsApi } from '../api';
+import { libraryApi, submissionsApi, usersApi } from '../api';
 import { cachedFetch } from '../utils/apiCache';
+import { useAuth } from '../contexts/AuthContext';
 import type { DocumentGuidance, DocumentType, KnowledgeLibraryItem, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview, ComposeStakeholderOption } from '../types';
 
 interface ChatMessage {
@@ -272,8 +273,11 @@ function LibraryContextChips({
 
 export default function ComposeModal({ onClose, onCreated }: Props) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [docTypes, setDocTypes] = useState<DocumentGuidance[]>([]);
   const [stakeholders, setStakeholders] = useState<ComposeStakeholderOption[]>([]);
+  const [founderOptions, setFounderOptions] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [founderOptionsLoading, setFounderOptionsLoading] = useState(false);
   const [step, setStep] = useState<Step>('type');
   const [docType, setDocType] = useState<DocumentType | null>(null);
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
@@ -303,6 +307,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [mentionState, setMentionState] = useState<{ start: number; query: string } | null>(null);
   const [guidedLibraryItems, setGuidedLibraryItems] = useState<KnowledgeLibraryItem[]>([]);
   const [chatInputDragOver, setChatInputDragOver] = useState(false);
+  const [selectedFounderIds, setSelectedFounderIds] = useState<string[]>([]);
+  const [founderPickerOpen, setFounderPickerOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Suggestions from the most recent AI message
@@ -373,6 +379,15 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       })
       .catch(() => toast('error', 'Could not load compose options'));
   }, []);
+
+  useEffect(() => {
+    if (user?.role !== 'team_member') return;
+    setFounderOptionsLoading(true);
+    usersApi.founders()
+      .then(({ data }) => setFounderOptions(data))
+      .catch(() => setFounderOptions([]))
+      .finally(() => setFounderOptionsLoading(false));
+  }, [user?.role]);
 
   useEffect(() => {
     const shouldShowLibraryContext = step === 'context' || step === 'custom_prompt';
@@ -705,10 +720,14 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   }
 
   // Submit for review (create + immediately submit)
-  async function submitForReview() {
+  async function submitForReview(reviewerIds: string[] = selectedFounderIds, force = false) {
     if (!docType || !stakeholder || !draft.trim()) return;
     if (step === 'existing_draft' && (!existingDraftAnalysis || existingDraftAnalyzedContent !== draft)) {
       toast('info', 'Run AI pre-check on the current draft before submitting to founders');
+      return;
+    }
+    if (user?.role === 'team_member' && !force) {
+      setFounderPickerOpen(true);
       return;
     }
     setSubmitting(true);
@@ -721,8 +740,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       if (uploadedFile) {
         await submissionsApi.uploadFile(created.id, uploadedFile);
       }
-      await submissionsApi.submit(created.id);
+      await submissionsApi.submit(created.id, { assigned_founder_ids: reviewerIds });
       toast('success', 'Submitted for review — AI is scoring your document');
+      setFounderPickerOpen(false);
+      setSelectedFounderIds([]);
       onCreated();
       onClose();
     } catch (e: any) {
@@ -1234,7 +1255,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               </button>
               <button
                 className="btn btn-primary"
-                onClick={submitForReview}
+                onClick={() => void submitForReview()}
                 disabled={submitting || !draft.trim() || !existingDraftAnalysis || existingDraftAnalyzedContent !== draft}
               >
                 {submitting ? <><Spinner /> Submitting…</> : '✓ Submit to Founders'}
@@ -1688,6 +1709,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   // Step: Draft editor
   if (step === 'draft') {
     return (
+      <>
       <Modal title="Review & Edit Draft" subtitle="Refine, edit, then submit for founder review" onClose={onClose} size="full">
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
           {/* Refine toolbar */}
@@ -1759,7 +1781,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               </button>
               <button
                 className="btn btn-primary"
-                onClick={submitForReview}
+                onClick={() => void submitForReview()}
                 disabled={submitting || !draft.trim()}
               >
                 {submitting ? <><Spinner /> Submitting…</> : '✓ Submit for Review'}
@@ -1768,6 +1790,83 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           </div>
         </div>
       </Modal>
+      {founderPickerOpen && (
+        <Modal
+          title="Choose Founder Reviewer"
+          subtitle="Select at least one founder who should approve this submission"
+          onClose={() => setFounderPickerOpen(false)}
+          size="lg"
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+              This submission will go only to the selected founder(s) for approval.
+            </div>
+            <div style={{ display: 'grid', gap: 10, maxHeight: 360, overflowY: 'auto' }}>
+              {founderOptionsLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)' }}>
+                  <Spinner /> Loading founders...
+                </div>
+              ) : founderOptions.length > 0 ? (
+                founderOptions.map((founder) => {
+                  const checked = selectedFounderIds.includes(founder.id);
+                  return (
+                    <label
+                      key={founder.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px 14px',
+                        border: `1px solid ${checked ? 'var(--pink-500)' : 'var(--border)'}`,
+                        borderRadius: 12,
+                        background: checked ? 'rgba(255, 101, 138, 0.08)' : 'var(--surface)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedFounderIds((prev) =>
+                            prev.includes(founder.id)
+                              ? prev.filter((id) => id !== founder.id)
+                              : [...prev, founder.id]
+                          );
+                        }}
+                      />
+                      <div style={{ display: 'grid', gap: 2 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{founder.name}</div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{founder.email}</div>
+                      </div>
+                    </label>
+                  );
+                })
+              ) : (
+                <div style={{ color: 'var(--ink-soft)' }}>No active founders were found.</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
+              <button className="btn btn-outline" onClick={() => setFounderPickerOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  if (selectedFounderIds.length === 0) {
+                    toast('info', 'Please select at least one founder');
+                    return;
+                  }
+                  void submitForReview(selectedFounderIds, true);
+                }}
+                disabled={selectedFounderIds.length === 0 || submitting}
+              >
+                {submitting ? <><Spinner /> Submitting…</> : 'Submit to Selected Founder(s)'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      </>
     );
   }
 

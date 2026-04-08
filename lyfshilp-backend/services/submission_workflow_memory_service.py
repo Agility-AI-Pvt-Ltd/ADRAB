@@ -42,11 +42,18 @@ class SubmissionWorkflowMemoryService:
         )
 
     @staticmethod
-    def initial_memory(*, doc_type: str, stakeholder: str, context_form_data: dict[str, Any] | None) -> dict[str, Any]:
+    def initial_memory(
+        *,
+        doc_type: str,
+        stakeholder: str,
+        context_form_data: dict[str, Any] | None,
+        assigned_founder_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         return {
             "doc_type": doc_type,
             "stakeholder": stakeholder,
             "context_form_data": context_form_data or {},
+            "assigned_founder_ids": assigned_founder_ids or [],
             "events": [
                 {
                     "stage": WorkflowStage.DRAFT_CREATED.value,

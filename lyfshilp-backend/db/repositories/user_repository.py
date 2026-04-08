@@ -31,6 +31,18 @@ class UserRepository(BaseRepository[User]):
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_active_founders(self) -> list[User]:
+        stmt = (
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                User.role == UserRole.FOUNDER,
+            )
+            .order_by(User.created_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_all_users(self) -> list[User]:
         stmt = (
             select(User)

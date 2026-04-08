@@ -85,6 +85,7 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 OPENAI_API_KEY=...
 DATABASE_URL=...
+ALLOWED_EMAIL_DOMAINS=agilityai.in,lyfshilpacademy.com
 ```
 
 Notes:
@@ -92,6 +93,7 @@ Notes:
 - `ALLOWED_ORIGINS` must include your deployed frontend origin.
 - `GOOGLE_REDIRECT_URI` must match the Google OAuth client configuration exactly.
 - The app accepts a PostgreSQL `DATABASE_URL` and normalizes it for async usage.
+- Use `ALLOWED_EMAIL_DOMAINS` for a comma-separated list of approved login domains.
 
 ### 4. Run Locally
 
@@ -107,7 +109,7 @@ API docs in debug mode:
 
 ### Domain Restriction
 
-Only `@agilityai.in` email addresses are allowed to sign in.
+Only approved email domains are allowed to sign in. Set them with `ALLOWED_EMAIL_DOMAINS` in your environment.
 
 ### Email + Password
 
@@ -152,7 +154,7 @@ Compatibility note:
 | GET | `/api/v1/submissions/dashboard` | Founder dashboard data |
 | GET | `/api/v1/submissions/{id}` | View a submission |
 | POST | `/api/v1/submissions/{id}/review` | Approve, edit, or reject |
-| GET | `/api/v1/submissions/{id}/versions` | Version history |
+| GET | `/api/v1/submissions/{id}/versions` | Version history for the owner or founders/admins |
 
 ### Admin
 
@@ -172,6 +174,12 @@ Compatibility note:
 | POST | `/api/v1/library/items` | Create a library item from markdown or an uploaded file |
 | PUT | `/api/v1/library/items/{id}` | Update a library item |
 | PATCH | `/api/v1/library/items/{id}/toggle` | Enable or disable a library item |
+| DELETE | `/api/v1/library/items/{id}` | Permanently delete a library item |
+
+Notes:
+
+- Founders and admins can manage library items.
+- Signed-in members can browse the Library in read-only mode and use matched founder context in Compose, but they cannot create, edit, delete, or bulk-update library entries.
 
 ### Users
 
@@ -202,10 +210,13 @@ Important values:
 
 ## Database and Seeding
 
-The app can initialize the database and seed default content on startup when `AUTO_INIT_DB=true`.
+The app can initialize the database on startup when `AUTO_INIT_DB=true`.
+
+Seeding is now separate from app startup so you can control when baseline data is written.
 
 Reusable seed scripts:
 
+- `scripts/seed_initial_data.py`
 - `scripts/seed_first_founder.py`
 - `scripts/seed_system_prompt.py`
 - `scripts/seed_stakeholder_guidance.py`
@@ -214,6 +225,18 @@ Reusable seed scripts:
 - `scripts/seed_document_guidance.py`
 - `scripts/seed_few_shot_examples.py`
 - `scripts/import_knowledge_snippet.py`
+
+Common seed command:
+
+```bash
+python3 lyfshilp-backend/scripts/seed_initial_data.py
+```
+
+To overwrite existing seeded rows:
+
+```bash
+python3 lyfshilp-backend/scripts/seed_initial_data.py --overwrite
+```
 
 ## Database Migrations
 
@@ -254,6 +277,8 @@ The backend stores:
 - parsed markdown in Postgres
 - matching metadata such as section, document types, stakeholders, and tags
 
+Members can browse the Library in read-only mode and use matched founder context in Compose, but they cannot modify library entries.
+
 Parsing behavior:
 
 - `llama_parse` is used first when `LLAMA_CLOUD_API_KEY` is configured
@@ -267,8 +292,8 @@ This is structured founder-managed prompt context, not vector RAG.
 Example:
 
 ```bash
-python3 scripts/seed_system_prompt.py
-python3 scripts/seed_system_prompt.py --overwrite
+python3 lyfshilp-backend/scripts/seed_initial_data.py
+python3 lyfshilp-backend/scripts/seed_initial_data.py --overwrite
 ```
 
 ## Testing
@@ -285,6 +310,7 @@ pytest -v
 - Google OAuth redirect URI must match the deployed frontend callback URL exactly.
 - Uploaded files are stored under `UPLOAD_DIR` and served by FastAPI at `/uploads`.
 - Founder Library uploads are stored under `UPLOAD_DIR/library/...` and parsed into markdown for prompt matching.
+- Use `.env.neon` for one-off migrations against Neon without changing your local `.env`.
 
 ## Design Notes
 
