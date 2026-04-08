@@ -10,6 +10,7 @@ from api.dependencies import CurrentUser, DBSession, FounderOnly
 from core.exceptions import ForbiddenError
 from models.models import Stakeholder
 from schemas.submission import (
+    ComposeOptionsResponse,
     DraftAnalysisRequest,
     DraftWorkflowResponse,
     GenerateDraftRequest,
@@ -23,6 +24,7 @@ from schemas.submission import (
 from services.document_guidance_service import DocumentGuidanceService
 from services.file_service import FileService
 from services.submission_service import SubmissionService
+from services.stakeholder_guidance_service import StakeholderGuidanceService
 
 router = APIRouter(prefix="/submissions", tags=["Submissions"])
 
@@ -41,6 +43,27 @@ async def generate_draft(
     """
     service = SubmissionService(session)
     return await service.generate_draft(body, current_user)
+
+
+@router.get("/compose-options", response_model=ComposeOptionsResponse)
+async def compose_options(
+    current_user: CurrentUser,
+    session: DBSession,
+):
+    """Return canonical document types and stakeholder options for compose screens."""
+    guidance_service = DocumentGuidanceService(session)
+    stakeholder_service = StakeholderGuidanceService(session)
+    await guidance_service.ensure_seeded()
+    await stakeholder_service.ensure_seeded()
+    docs = await guidance_service.list_guidance()
+    stakeholders = [
+        {"value": row.stakeholder.value, "label": row.title}
+        for row in await stakeholder_service.list_guidance()
+    ]
+    return {
+        "document_guidance": docs,
+        "stakeholders": stakeholders,
+    }
 
 
 @router.get("/library-context", response_model=LibraryContextPreviewResponse)

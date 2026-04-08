@@ -34,8 +34,9 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
 
-    # Domain whitelist — only @agilityai.in emails may log in
+    # Domain whitelist — accept one or many approved email domains
     ALLOWED_EMAIL_DOMAIN: str = "agilityai.in"
+    ALLOWED_EMAIL_DOMAINS: str = ""
     ALLOWED_EMAIL_EXCEPTIONS: str = ""
     FIRST_FOUNDER_NAME: str = "Sharad"
     FIRST_FOUNDER_EMAIL: str = "sharad@agilityai.in"
@@ -128,6 +129,13 @@ class Settings(BaseSettings):
     @property
     def ALLOWED_EMAIL_EXCEPTION_LIST(self) -> List[str]:
         return [email.strip().lower() for email in self.ALLOWED_EMAIL_EXCEPTIONS.split(",") if email.strip()]
+
+    @property
+    def ALLOWED_EMAIL_DOMAIN_LIST(self) -> List[str]:
+        raw = [domain.strip().lower() for domain in self.ALLOWED_EMAIL_DOMAINS.split(",") if domain.strip()]
+        if raw:
+            return raw
+        return [self.ALLOWED_EMAIL_DOMAIN.strip().lower()] if self.ALLOWED_EMAIL_DOMAIN.strip() else []
 
 
 @lru_cache

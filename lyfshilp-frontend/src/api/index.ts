@@ -3,7 +3,7 @@ import type {
   TokenResponse, User, Submission, DashboardData,
   SystemPrompt, AuditLog, DocumentType, Stakeholder, DocumentGuidance, StakeholderGuidance, AIReviewGuidance, EmojiGuidance, DraftAnalysisResponse, DraftWorkflowResponse, KnowledgeLibraryItem,
   LLMMode,
-  GoogleDriveAuthUrl, GoogleDriveConnectionStatus, GoogleDriveFile, LibraryContextPreview
+  GoogleDriveAuthUrl, GoogleDriveConnectionStatus, GoogleDriveFile, LibraryContextPreview, ComposeOptionsResponse
 } from '../types';
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -68,6 +68,7 @@ export const authApi = {
 // ── Submissions ───────────────────────────────────────────────────────────────
 export const submissionsApi = {
   documentGuidance: () => client.get<DocumentGuidance[]>('/submissions/document-guidance'),
+  composeOptions: () => client.get<ComposeOptionsResponse>('/submissions/compose-options'),
 
   generateDraft: (
     doc_type: DocumentType,

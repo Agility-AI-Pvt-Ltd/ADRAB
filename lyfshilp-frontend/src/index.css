@@ -63,7 +63,7 @@
 [data-theme="dark"] .stat-card,
 [data-theme="dark"] .modal,
 [data-theme="dark"] .modal-header,
-[data-theme="dark"] .modal-footer { background: var(--white); }
+[data-theme="dark"] .modal-footer { background: #141414; }
 
 [data-theme="dark"] .form-input,
 [data-theme="dark"] .form-select,
@@ -84,7 +84,7 @@
 [data-theme="dark"] .refine-btn      { background: #1e1e1e; border-color: var(--border); color: var(--ink-mid); }
 [data-theme="dark"] .refine-btn:hover { background: var(--green-700); border-color: var(--green-700); color: #fff; }
 
-[data-theme="dark"] thead { background: var(--white); }
+[data-theme="dark"] thead { background: #141414; }
 [data-theme="dark"] tbody tr:hover { background: #1f1f1f; }
 [data-theme="dark"] th, [data-theme="dark"] td { border-bottom-color: var(--border); }
 
@@ -1171,6 +1171,17 @@ tbody tr:hover { background: var(--green-50); }
   position: sticky;
   bottom: 0;
   background: var(--white);
+}
+
+[data-theme="dark"] .modal {
+  background: #141414;
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer {
+  background: #141414;
 }
 
 /* ── EMPTY STATE ── */

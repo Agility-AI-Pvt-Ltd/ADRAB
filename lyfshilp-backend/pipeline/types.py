@@ -18,6 +18,8 @@ class DraftGenerationInput:
     llm_mode: str = "guided"
     thinking_instructions: str | None = None
     current_department: str | None = None
+    available_doc_types: list[str] | None = None
+    available_stakeholders: list[str] | None = None
 
 
 @dataclass(slots=True)
@@ -59,6 +61,8 @@ class DraftGenerationState(TypedDict, total=False):
     llm_mode: str
     thinking_instructions: str | None
     current_department: str | None
+    available_doc_types: list[str] | None
+    available_stakeholders: list[str] | None
     ai_service: AIService
     deterministic_context: str
     enrichment_context: str

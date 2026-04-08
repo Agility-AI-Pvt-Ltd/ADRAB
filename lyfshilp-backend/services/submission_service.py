@@ -19,6 +19,7 @@ from db.repositories.submission_repository import SubmissionRepository
 from models.models import (
     AuditLog,
     Feedback,
+    Stakeholder,
     Submission,
     SubmissionStatus,
     User,
@@ -41,6 +42,8 @@ from schemas.submission import (
     VisibilityUpdateRequest,
 )
 from services.file_service import FileService
+from services.document_guidance_service import DocumentGuidanceService
+from services.stakeholder_guidance_service import StakeholderGuidanceService
 from services.submission_workflow_memory_service import SubmissionWorkflowMemoryService
 
 logger = get_logger(__name__)
@@ -56,6 +59,8 @@ class SubmissionService:
         self._workflow_service = SubmissionWorkflowService(self._prompt_context_service)
         self._workflow_memory_service = SubmissionWorkflowMemoryService(session)
         self._file_service = FileService()
+        self._document_guidance_service = DocumentGuidanceService(session)
+        self._stakeholder_guidance_service = StakeholderGuidanceService(session)
 
     # ── Draft generation ──────────────────────────────────────────────────────
 
@@ -63,6 +68,8 @@ class SubmissionService:
         """Ask AI to generate a full draft; returns raw document text."""
         await self._workflow_memory_service.ensure_schema()
         self._require_team_member(actor)
+        doc_types = await self._accepted_doc_types()
+        stakeholders = await self._accepted_stakeholders()
         result = await self._workflow_service.generate_draft(
             DraftGenerationInput(
                 doc_type=request.doc_type,
@@ -71,6 +78,8 @@ class SubmissionService:
                 llm_mode=request.llm_mode,
                 thinking_instructions=request.thinking_instructions,
                 current_department=actor.department.value if actor.department else None,
+                available_doc_types=doc_types,
+                available_stakeholders=stakeholders,
             )
         )
         return DraftWorkflowResponse(
@@ -78,6 +87,15 @@ class SubmissionService:
             workflow_stage=result.workflow_stage,
             workflow_memory=result.workflow_memory,
         )
+
+    async def _accepted_stakeholders(self) -> list[str]:
+        await self._stakeholder_guidance_service.ensure_seeded()
+        rows = await self._stakeholder_guidance_service.list_guidance()
+        return [row.stakeholder.value for row in rows]
+
+    async def _accepted_doc_types(self) -> list[str]:
+        guidance = await self._document_guidance_service.list_guidance()
+        return [item.doc_type for item in guidance]
 
     async def analyze_draft(self, request: DraftAnalysisRequest, actor: User) -> DraftAnalysisResponse:
         """Analyze a human-authored draft before it is saved or submitted."""

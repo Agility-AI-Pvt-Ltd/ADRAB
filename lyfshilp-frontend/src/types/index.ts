@@ -281,6 +281,16 @@ export interface LibraryContextPreview {
   has_context: boolean;
 }
 
+export interface ComposeStakeholderOption {
+  value: Stakeholder;
+  label: string;
+}
+
+export interface ComposeOptionsResponse {
+  document_guidance: DocumentGuidance[];
+  stakeholders: ComposeStakeholderOption[];
+}
+
 export interface DraftWorkflowResponse {
   draft: string;
   workflow_stage: string;

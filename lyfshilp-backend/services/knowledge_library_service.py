@@ -18,10 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.exceptions import NotFoundError, ValidationError
 from core.logging import get_logger
 from models.models import KnowledgeLibraryItem, Stakeholder, TeamDepartment, User
+from services.document_guidance_service import DocumentGuidanceService
 from services.ai_service import AIService
 from services.file_service import FileService
 from services.google_drive_service import GoogleDriveService
 from services.knowledge_library_parser import KnowledgeLibraryParser, ParsedLibraryDocument
+from services.stakeholder_guidance_service import StakeholderGuidanceService
 
 logger = get_logger(__name__)
 
@@ -33,6 +35,8 @@ class KnowledgeLibraryService:
         self._drive_service = GoogleDriveService(session)
         self._parser = KnowledgeLibraryParser()
         self._ai_service = AIService()
+        self._document_guidance_service = DocumentGuidanceService(session)
+        self._stakeholder_guidance_service = StakeholderGuidanceService(session)
 
     async def ensure_schema(self) -> None:
         await self._session.execute(
@@ -149,6 +153,60 @@ class KnowledgeLibraryService:
         if analysis.notes:
             parts.append(f"notes: {analysis.notes}")
         return "\n".join(parts)
+
+    async def _accepted_stakeholders(self) -> list[str]:
+        await self._stakeholder_guidance_service.ensure_seeded()
+        guidance = await self._stakeholder_guidance_service.list_guidance()
+        return [item.stakeholder.value for item in guidance]
+
+    @staticmethod
+    def _guidance_requests_all(value: Optional[str], *, field_name: str) -> bool:
+        if not value:
+            return False
+        text = value.strip().lower()
+        if not text:
+            return False
+        if field_name == "stakeholders":
+            return any(
+                phrase in text
+                for phrase in (
+                    "all stakeholders",
+                    "every stakeholder",
+                    "everyone",
+                    "all audience",
+                    "all audiences",
+                    "global stakeholder",
+                    "apply to all stakeholders",
+                    "applies to all stakeholders",
+                )
+            )
+        return any(
+            phrase in text
+            for phrase in (
+                "all doc types",
+                "all document types",
+                "every doc type",
+                "every document type",
+                "global doc type",
+                "apply to all doc types",
+                "applies to all doc types",
+            )
+        )
+
+    @staticmethod
+    def _expand_all_scope_values(
+        values: Optional[list[str]],
+        all_values: list[str],
+        instruction: Optional[str],
+        field_name: str,
+    ) -> Optional[list[str]]:
+        if KnowledgeLibraryService._guidance_requests_all(instruction, field_name=field_name):
+            return list(all_values)
+        return values
+
+    async def _accepted_doc_types(self) -> list[str]:
+        guidance = await self._document_guidance_service.list_guidance()
+        return [item.doc_type for item in guidance]
 
     async def _store_source_file(self, file: UploadFile, current_user: User) -> tuple[str, str]:
         """
@@ -430,6 +488,8 @@ class KnowledgeLibraryService:
         conversation = self._conversation_messages(item)
         if founder_instructions and founder_instructions.strip():
             self._append_conversation_message(conversation, "user", founder_instructions)
+        all_doc_types = await self._accepted_doc_types()
+        all_stakeholders = await self._accepted_stakeholders()
         analysis = await self._ai_service.analyze_library_intake(
             item.content_markdown,
             file_name=item.source_filename,
@@ -444,6 +504,21 @@ class KnowledgeLibraryService:
             founder_instructions=founder_instructions,
             auto_only=auto_only,
             conversation_history=conversation,
+            available_doc_types=all_doc_types,
+            available_stakeholders=all_stakeholders,
+        )
+
+        analysis.recommended_doc_types = self._expand_all_scope_values(
+            analysis.recommended_doc_types,
+            all_doc_types,
+            founder_instructions,
+            "doc_types",
+        )
+        analysis.recommended_stakeholders = self._expand_all_scope_values(
+            analysis.recommended_stakeholders,
+            all_stakeholders,
+            founder_instructions,
+            "stakeholders",
         )
 
         self._append_conversation_message(conversation, "assistant", self._assistant_summary(analysis))
@@ -584,6 +659,8 @@ class KnowledgeLibraryService:
             applies_to_doc_types=applies_to_doc_types,
             applies_to_stakeholders=applies_to_stakeholders,
             tags=tags,
+            available_doc_types=await self._accepted_doc_types(),
+            available_stakeholders=await self._accepted_stakeholders(),
         )
 
         return {

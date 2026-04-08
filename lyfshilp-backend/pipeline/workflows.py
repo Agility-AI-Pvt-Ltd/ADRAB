@@ -54,6 +54,8 @@ class SubmissionWorkflowService:
                 "context_form_data": request.context_form_data,
                 "llm_mode": request.llm_mode,
                 "thinking_instructions": request.thinking_instructions,
+                "available_doc_types": request.available_doc_types,
+                "available_stakeholders": request.available_stakeholders,
                 "workflow_trace": trace,
             }
         )
@@ -249,6 +251,8 @@ class SubmissionWorkflowService:
             guidance=state["prompt_context"],
             llm_mode=state.get("llm_mode", "guided"),
             thinking_instructions=state.get("thinking_instructions"),
+            available_doc_types=state.get("available_doc_types"),
+            available_stakeholders=state.get("available_stakeholders"),
         )
         memory = dict(state["workflow_memory"])
         events = list(memory.get("events") or [])

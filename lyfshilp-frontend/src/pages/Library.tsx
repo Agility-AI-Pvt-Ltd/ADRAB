@@ -961,7 +961,7 @@ export default function LibraryPage() {
                 border: '1px solid var(--line)',
                 borderRadius: 16,
                 padding: 16,
-                background: 'var(--surface)',
+                background: 'rgba(255, 255, 255, 0.02)',
                 display: 'grid',
                 gap: 12,
               }}>
@@ -999,7 +999,7 @@ export default function LibraryPage() {
                   </div>
                 )}
                 {editingItem.intake_analysis.clarifying_questions.length > 0 && (
-                  <div style={{ display: 'grid', gap: 10, padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--white)' }}>
+                  <div style={{ display: 'grid', gap: 10, padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'rgba(255, 255, 255, 0.03)' }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Founder answers</div>
                     <textarea
                       className="form-textarea"
@@ -1034,7 +1034,7 @@ export default function LibraryPage() {
                   </div>
                 )}
                 {editingItem.intake_conversation?.length ? (
-                  <div style={{ display: 'grid', gap: 10, padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--white)' }}>
+                  <div style={{ display: 'grid', gap: 10, padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'rgba(255, 255, 255, 0.03)' }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Conversation history</div>
                     <div style={{ display: 'grid', gap: 10 }}>
                       {editingItem.intake_conversation.map((message, index) => (
@@ -1044,7 +1044,7 @@ export default function LibraryPage() {
                             border: '1px solid var(--border)',
                             borderRadius: 12,
                             padding: '10px 12px',
-                            background: message.role === 'user' ? 'rgba(255, 105, 135, 0.05)' : 'rgba(255, 255, 255, 0.9)',
+                            background: message.role === 'user' ? 'rgba(255, 105, 135, 0.05)' : 'rgba(255, 255, 255, 0.05)',
                             display: 'grid',
                             gap: 6,
                           }}
@@ -1061,7 +1061,7 @@ export default function LibraryPage() {
                     </div>
                   </div>
                 ) : null}
-                <div style={{ display: 'grid', gap: 10, padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--white)' }}>
+                <div style={{ display: 'grid', gap: 10, padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'rgba(255, 255, 255, 0.03)' }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Founder guidance</div>
                   <textarea
                     className="form-textarea"

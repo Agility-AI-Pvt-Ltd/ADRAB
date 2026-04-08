@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
-import { adminApi, submissionsApi } from '../api';
-import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview } from '../types';
+import { submissionsApi } from '../api';
+import type { DocumentGuidance, DocumentType, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview, ComposeStakeholderOption } from '../types';
 
 interface ChatMessage {
   role: 'user' | 'ai';
@@ -10,16 +10,6 @@ interface ChatMessage {
   analysis?: DraftAnalysisResponse;
   draftTrace?: any;
 }
-
-const STAKEHOLDERS: { value: Stakeholder; label: string }[] = [
-  { value: 'parent', label: 'Parent' },
-  { value: 'student', label: 'Student' },
-  { value: 'principal', label: 'Principal' },
-  { value: 'counsellor', label: 'Counsellor' },
-  { value: 'corporate', label: 'Corporate' },
-  { value: 'investor', label: 'Investor' },
-  { value: 'government', label: 'Government' },
-];
 
 const REFINE_ACTIONS = [
   { action: 'shorter', label: '↓ Shorter' },
@@ -140,6 +130,7 @@ function AutoTextarea({
 export default function ComposeModal({ onClose, onCreated }: Props) {
   const { toast } = useToast();
   const [docTypes, setDocTypes] = useState<DocumentGuidance[]>([]);
+  const [stakeholders, setStakeholders] = useState<ComposeStakeholderOption[]>([]);
   const [step, setStep] = useState<Step>('type');
   const [docType, setDocType] = useState<DocumentType | null>(null);
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
@@ -216,9 +207,12 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const draftRef = useAutoResize(draft, { minHeight: 260, maxHeight: 560 });
 
   useEffect(() => {
-    submissionsApi.documentGuidance()
-      .then(({ data }) => setDocTypes(data))
-      .catch(() => toast('error', 'Could not load document types'));
+    submissionsApi.composeOptions()
+      .then(({ data }) => {
+        setDocTypes(data.document_guidance);
+        setStakeholders(data.stakeholders);
+      })
+      .catch(() => toast('error', 'Could not load compose options'));
   }, []);
 
   useEffect(() => {
@@ -245,14 +239,14 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       const next: Record<string, string> = {};
       for (const field of visibleFieldDefs) {
         if (field.key === 'recipient_type') {
-          next[field.key] = stakeholder ? STAKEHOLDERS.find((s) => s.value === stakeholder)?.label ?? stakeholder : '';
+          next[field.key] = stakeholder ? stakeholders.find((s) => s.value === stakeholder)?.label ?? stakeholder : '';
         } else {
           next[field.key] = prev[field.key] ?? '';
         }
       }
       return next;
     });
-  }, [visibleFieldDefs, stakeholder]);
+  }, [visibleFieldDefs, stakeholder, stakeholders]);
 
   function updateContextField(key: string, value: string) {
     setContextFields((fields) => ({ ...fields, [key]: value }));
@@ -529,7 +523,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           <div className="form-group">
             <label className="form-label">Stakeholder <span className="required">*</span></label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {STAKEHOLDERS.map(s => (
+              {stakeholders.map(s => (
                 <button
                   key={s.value}
                   onClick={() => setStakeholder(s.value)}

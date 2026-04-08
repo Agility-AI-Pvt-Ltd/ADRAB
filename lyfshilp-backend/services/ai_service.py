@@ -170,11 +170,21 @@ Respond ONLY with valid JSON matching this exact structure:
         guidance: str,
         llm_mode: str = "guided",
         thinking_instructions: str | None = None,
+        available_doc_types: list[str] | None = None,
+        available_stakeholders: list[str] | None = None,
     ) -> str:
         context_lines = "\n".join(f"- {k}: {v}" for k, v in context.items())
+        allowed_doc_types = ", ".join(available_doc_types or []) or "None"
+        allowed_stakeholders = ", ".join(available_stakeholders or []) or "None"
         return f"""
 Generate a complete {doc_type} for the stakeholder type: {stakeholder}.
 {PromptBuilder._mode_block(llm_mode, thinking_instructions)}
+
+ALLOWED DOC TYPES IN THIS APP:
+{allowed_doc_types}
+
+ALLOWED STAKEHOLDERS IN THIS APP:
+{allowed_stakeholders}
 
 {guidance}
 
@@ -255,6 +265,8 @@ Keep it under 100 words. Respond ONLY with the note text.
         founder_instructions: str | None = None,
         auto_only: bool = False,
         conversation_history: list[dict] | None = None,
+        available_doc_types: list[str] | None = None,
+        available_stakeholders: list[str] | None = None,
     ) -> str:
         provided = {
             "title": title,
@@ -274,6 +286,8 @@ Keep it under 100 words. Respond ONLY with the note text.
                 continue
             history_lines.append(f"{role}: {content}")
         history_block = "\n".join(history_lines)
+        allowed_doc_types = available_doc_types or []
+        allowed_stakeholders = available_stakeholders or []
         return f"""
 You are classifying a founder-uploaded source for the Founder Library.
 
@@ -283,9 +297,17 @@ Your job:
 3. If there is not enough information to classify safely, ask up to 3 concise clarifying questions.
 4. Prefer founder-provided metadata when it is already supplied and sensible.
 5. If founder instructions are provided, follow them as the highest-priority guidance unless they conflict with safety or formatting rules.
+6. If founder instructions say "all stakeholders", "all doc types", "everyone", "global", or similar, expand to the full allowed list instead of picking a subset.
+7. Never invent stakeholder or doc-type values outside the allowed lists.
 
 FOUNDERS' INPUT METADATA:
 {json.dumps(provided, indent=2)}
+
+ALLOWED DOC TYPES IN THIS APP:
+{json.dumps(allowed_doc_types, indent=2)}
+
+ALLOWED STAKEHOLDERS IN THIS APP:
+{json.dumps(allowed_stakeholders, indent=2)}
 
 LLM MODE:
 {("AUTO_ONLY" if auto_only else "GUIDED")}
@@ -326,6 +348,10 @@ Rules:
 - Use concise labels and avoid overfitting.
 - If the item clearly belongs under the founder library with no ambiguity, set needs_clarification to false and keep clarifying_questions empty.
 - If the source file type and content seem mismatched, mention it in notes.
+- Only recommend doc types and stakeholders from the allowed lists above.
+- If the founder says "all stakeholders" or "all doc types", expand to the full allowed list instead of inventing new categories.
+- If the founder explicitly requests "all stakeholders" or "all doc types", return the complete allowed list for that field, not a partial subset.
+- IMPORTANT: If the founder explicitly instructs you not to change certain fields, or if the provided input metadata is completely acceptable, you MUST return null (for strings) or empty arrays (for lists) for those inferred fields so they are preserved. Do not simply echo back the input values.
 """.strip()
 
 
@@ -362,6 +388,8 @@ class AIService:
         guidance: str,
         llm_mode: str = "guided",
         thinking_instructions: str | None = None,
+        available_doc_types: list[str] | None = None,
+        available_stakeholders: list[str] | None = None,
     ) -> str:
         prompt = PromptBuilder.generate_draft(
             doc_type,
@@ -370,6 +398,8 @@ class AIService:
             guidance,
             llm_mode=llm_mode,
             thinking_instructions=thinking_instructions,
+            available_doc_types=available_doc_types,
+            available_stakeholders=available_stakeholders,
         )
         return await self._call(prompt, operation="generate_draft")
 
@@ -410,6 +440,8 @@ class AIService:
         founder_instructions: str | None = None,
         auto_only: bool = False,
         conversation_history: list[dict] | None = None,
+        available_doc_types: list[str] | None = None,
+        available_stakeholders: list[str] | None = None,
     ) -> KnowledgeLibraryAnalysis:
         prompt = PromptBuilder.library_intake(
             content_markdown,
@@ -425,6 +457,8 @@ class AIService:
             founder_instructions=founder_instructions,
             auto_only=auto_only,
             conversation_history=conversation_history,
+            available_doc_types=available_doc_types,
+            available_stakeholders=available_stakeholders,
         )
         raw = await self._call(prompt, operation="analyze_library_intake")
         clean = raw.strip().removeprefix("```json").removesuffix("```").strip()

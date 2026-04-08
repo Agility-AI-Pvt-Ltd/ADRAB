@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from schemas.admin import DocumentGuidanceResponse
 from models.models import Stakeholder, SubmissionStatus, WorkflowStage
 
 
@@ -104,6 +105,16 @@ class DraftAnalysisResponse(BaseModel):
 class LibraryContextPreviewResponse(BaseModel):
     library_context: str
     has_context: bool
+
+
+class ComposeStakeholderOption(BaseModel):
+    value: str
+    label: str
+
+
+class ComposeOptionsResponse(BaseModel):
+    document_guidance: list["DocumentGuidanceResponse"]
+    stakeholders: list[ComposeStakeholderOption]
 
 
 class VisibilityResponse(BaseModel):
