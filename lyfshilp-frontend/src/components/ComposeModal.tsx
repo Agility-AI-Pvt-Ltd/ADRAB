@@ -536,33 +536,52 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       setPendingChatInput(input);
     } else {
       // Follow-up with no suggestions → refine immediately
-      await executeRefine(input, []);
+      await executeRefine(baseDraft!, input, [], []);
     }
   }
 
-  async function executeRefine(userInstruction: string, applySuggestions: number[]) {
-    if (!docType || !stakeholder || !baseDraft) return;
-    setChatMessages((prev) => [...prev, { role: 'user', content: userInstruction }]);
+  async function executeRefine(
+    draftToRefine: string,
+    userInstruction: string,
+    applySuggestions: { original: string; replacement: string; reason: string }[],
+    applyGrammarNotes: string[]
+  ) {
+    if (!docType || !stakeholder || !draftToRefine) return;
+
+    let human_input = userInstruction ? `INSTRUCTION: ${userInstruction}\n\n` : '';
+    
+    if (applySuggestions.length > 0 || applyGrammarNotes.length > 0) {
+      human_input += userInstruction 
+        ? 'ALSO APPLY THESE SPECIFIC IMPROVEMENTS:\n'
+        : 'APPLY THESE SPECIFIC IMPROVEMENTS:\n';
+        
+      applySuggestions.forEach((s) => {
+        human_input += `- Replace "${s.original}" → "${s.replacement}" (Reason: ${s.reason})\n`;
+      });
+      applyGrammarNotes.forEach((n) => {
+        human_input += `- Fix grammar issue: ${n}\n`;
+      });
+      
+      human_input += '\nIMPORTANT: Apply ONLY the listed improvements/instructions. Do NOT make unrequested changes.';
+    } else {
+      human_input += 'IMPORTANT: Apply ONLY the instruction above. Do NOT apply any other suggestions or improvements not explicitly listed here.';
+    }
+
+    const chatDisplayMessage = userInstruction || 
+      (applySuggestions.length > 0 && applyGrammarNotes.length > 0 ? `Applied ${applySuggestions.length} suggestion(s) and ${applyGrammarNotes.length} grammar fix(es).` :
+       applySuggestions.length > 0 ? `Applied ${applySuggestions.length} suggestion(s).` :
+       `Applied ${applyGrammarNotes.length} grammar fix(es).`);
+
+    setChatMessages((prev) => [...prev, { role: 'user', content: chatDisplayMessage }]);
     setPendingChatInput(null);
     setGenerating(true);
     try {
-      // Build an explicit human_input so the AI doesn't invent other changes
-      let human_input = `INSTRUCTION: ${userInstruction}\n\n`;
-      if (applySuggestions.length > 0) {
-        human_input += 'ALSO APPLY THESE SPECIFIC IMPROVEMENTS (and nothing else beyond the instruction above):\n';
-        applySuggestions.forEach((idx) => {
-          const s = lastSuggestions[idx];
-          if (s) human_input += `- Replace "${s.original}" → "${s.replacement}" (Reason: ${s.reason})\n`;
-        });
-      } else {
-        human_input += 'IMPORTANT: Apply ONLY the instruction above. Do NOT apply any other suggestions or improvements not explicitly listed here.';
-      }
-
-      const { data } = await submissionsApi.refineDraft(baseDraft, 'regenerate', docType, stakeholder, {
+      const { data } = await submissionsApi.refineDraft(draftToRefine, 'regenerate', docType, stakeholder, {
         human_input,
         thinking_instructions: trimmedThinkingInstructions || undefined,
       });
       const resultDraft = data.draft;
+      setBaseDraft(resultDraft);
       const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
       setChatMessages((prev) => [...prev, { role: 'ai', content: resultDraft, analysis, draftTrace: data.workflow_memory }]);
     } catch (e: any) {
@@ -686,6 +705,46 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       toast('error', e.response?.data?.detail ?? 'Refinement failed');
     } finally {
       setRefining(false);
+    }
+  }
+
+  async function applyExistingDraftImprovements(
+    applySuggestions: { original: string; replacement: string; reason: string }[],
+    applyGrammarNotes: string[]
+  ) {
+    if (!docType || !stakeholder || !draft.trim()) return;
+
+    let human_input = '';
+    
+    if (applySuggestions.length > 0 || applyGrammarNotes.length > 0) {
+      human_input += 'APPLY THESE SPECIFIC IMPROVEMENTS:\n';
+      applySuggestions.forEach((s) => {
+        human_input += `- Replace "${s.original}" → "${s.replacement}" (Reason: ${s.reason})\n`;
+      });
+      applyGrammarNotes.forEach((n) => {
+        human_input += `- Fix grammar issue: ${n}\n`;
+      });
+      human_input += '\nIMPORTANT: Apply ONLY the listed improvements/instructions. Do NOT make unrequested changes.';
+    } else {
+      return;
+    }
+
+    setCheckingReadiness(true);
+    try {
+      const { data } = await submissionsApi.refineDraft(draft, 'regenerate', docType, stakeholder, {
+        human_input,
+      });
+      const resultDraft = data.draft;
+      setDraft(resultDraft);
+      
+      const { data: analysis } = await submissionsApi.analyzeDraft(docType, stakeholder, resultDraft);
+      setExistingDraftAnalysis(analysis);
+      setExistingDraftAnalyzedContent(resultDraft);
+      toast('success', 'Changes applied!');
+    } catch (e: any) {
+      toast('error', e.response?.data?.detail ?? 'Failed to apply improvements');
+    } finally {
+      setCheckingReadiness(false);
     }
   }
 
@@ -1169,20 +1228,75 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                 </div>
                 {existingDraftAnalysis.grammar_check?.notes?.length ? (
                   <div style={{ marginBottom: 18 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check</div>
-                    <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--ink-soft)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check</div>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => applyExistingDraftImprovements([], existingDraftAnalysis.grammar_check!.notes)}
+                        disabled={checkingReadiness}
+                        style={{ fontSize: 11, padding: '4px 8px', height: 'auto', borderRadius: 6 }}
+                      >
+                        Apply All
+                      </button>
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', color: 'var(--ink-soft)' }}>
                       {existingDraftAnalysis.grammar_check.notes.map((note, idx) => (
-                        <li key={idx} style={{ marginBottom: 8 }}>{note}</li>
+                        <li
+                          key={idx}
+                          onClick={() => !checkingReadiness && applyExistingDraftImprovements([], [note])}
+                          style={{ marginBottom: 4, cursor: checkingReadiness ? 'default' : 'pointer', padding: '6px 10px', borderRadius: 8, transition: 'background 0.15s', display: 'flex', alignItems: 'flex-start', gap: 8 }}
+                          onMouseEnter={e => { if (!checkingReadiness) e.currentTarget.style.background = 'var(--surface)'; }}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          title="Click to apply this grammar fix"
+                        >
+                          <span style={{ color: 'var(--green-600)', marginTop: 2 }}>✦</span>
+                          <span style={{ flex: 1 }}>{note}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
                 {existingDraftAnalysis.suggestions.length > 0 && (
                   <div style={{ marginBottom: 18 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Basic AI Suggestions</div>
-                    <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--ink-soft)' }}>
-                      {existingDraftAnalysis.suggestions.slice(0, 4).map((item, idx) => (
-                        <li key={idx} style={{ marginBottom: 8 }}>{item.reason}</li>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Basic AI Suggestions</div>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => applyExistingDraftImprovements(existingDraftAnalysis.suggestions, [])}
+                        disabled={checkingReadiness}
+                        style={{ fontSize: 11, padding: '4px 8px', height: 'auto', borderRadius: 6 }}
+                      >
+                        Apply All
+                      </button>
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', color: 'var(--ink-soft)' }}>
+                      {existingDraftAnalysis.suggestions.slice(0, 4).map((s, idx) => (
+                        <li
+                          key={idx}
+                          onClick={() => !checkingReadiness && applyExistingDraftImprovements([s], [])}
+                          style={{ marginBottom: 8, cursor: checkingReadiness ? 'default' : 'pointer', padding: '8px 12px', borderRadius: 8, transition: 'background 0.15s', display: 'flex', alignItems: 'flex-start', gap: 8, border: '1px solid transparent' }}
+                          onMouseEnter={e => {
+                            if (!checkingReadiness) {
+                              e.currentTarget.style.background = 'var(--surface)';
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                            }
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.borderColor = 'transparent';
+                          }}
+                          title="Click to apply this suggestion"
+                        >
+                          <span style={{ color: 'var(--green-600)', marginTop: 2 }}>✦</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: 'var(--ink)', marginBottom: 4 }}>{s.reason}</div>
+                            <div style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ textDecoration: 'line-through' }}>{s.original}</span>
+                              <span>→</span>
+                              <span style={{ color: 'var(--ink)', fontStyle: 'italic' }}>{s.replacement}</span>
+                            </div>
+                          </div>
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -1342,10 +1456,30 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
 
                             {msg.analysis.grammar_check?.notes?.length ? (
                               <div style={{ marginTop: 16 }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check Notes</div>
-                                <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--ink-soft)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check Notes</div>
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    onClick={() => executeRefine(msg.content, '', [], msg.analysis!.grammar_check!.notes)}
+                                    disabled={generating}
+                                    style={{ fontSize: 11, padding: '4px 8px', height: 'auto', borderRadius: 6 }}
+                                  >
+                                    Apply All
+                                  </button>
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', fontSize: 14, color: 'var(--ink-soft)' }}>
                                   {msg.analysis.grammar_check.notes.map((note, idx) => (
-                                    <li key={idx} style={{ marginBottom: 4 }}>{note}</li>
+                                    <li
+                                      key={idx}
+                                      onClick={() => !generating && executeRefine(msg.content, '', [], [note])}
+                                      style={{ marginBottom: 4, cursor: generating ? 'default' : 'pointer', padding: '6px 10px', borderRadius: 8, transition: 'background 0.15s', display: 'flex', alignItems: 'flex-start', gap: 8 }}
+                                      onMouseEnter={e => { if (!generating) e.currentTarget.style.background = 'var(--surface)'; }}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                      title="Click to apply this grammar fix"
+                                    >
+                                      <span style={{ color: 'var(--green-600)', marginTop: 2 }}>✦</span>
+                                      <span style={{ flex: 1 }}>{note}</span>
+                                    </li>
                                   ))}
                                 </ul>
                               </div>
@@ -1354,10 +1488,45 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                         )}
                         {msg.analysis.suggestions.length > 0 && (
                           <div style={{ marginBottom: 24 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Suggestions</div>
-                            <ul style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--ink-soft)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Suggestions</div>
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => executeRefine(msg.content, '', msg.analysis!.suggestions, [])}
+                                disabled={generating}
+                                style={{ fontSize: 11, padding: '4px 8px', height: 'auto', borderRadius: 6 }}
+                              >
+                                Apply All
+                              </button>
+                            </div>
+                            <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', fontSize: 14, color: 'var(--ink-soft)' }}>
                               {msg.analysis.suggestions.slice(0, 3).map((s, idx) => (
-                                <li key={idx} style={{ marginBottom: 8 }}>{s.reason}</li>
+                                <li
+                                  key={idx}
+                                  onClick={() => !generating && executeRefine(msg.content, '', [s], [])}
+                                  style={{ marginBottom: 8, cursor: generating ? 'default' : 'pointer', padding: '8px 12px', borderRadius: 8, transition: 'background 0.15s', display: 'flex', alignItems: 'flex-start', gap: 8, border: '1px solid transparent' }}
+                                  onMouseEnter={e => {
+                                    if (!generating) {
+                                      e.currentTarget.style.background = 'var(--surface)';
+                                      e.currentTarget.style.borderColor = 'var(--border)';
+                                    }
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.borderColor = 'transparent';
+                                  }}
+                                  title="Click to apply this suggestion"
+                                >
+                                  <span style={{ color: 'var(--green-600)', marginTop: 2 }}>✦</span>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ color: 'var(--ink)', marginBottom: 4 }}>{s.reason}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                      <span style={{ textDecoration: 'line-through' }}>{s.original}</span>
+                                      <span>→</span>
+                                      <span style={{ color: 'var(--ink)', fontStyle: 'italic' }}>{s.replacement}</span>
+                                    </div>
+                                  </div>
+                                </li>
                               ))}
                             </ul>
                           </div>
@@ -1432,13 +1601,13 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button
                   className="btn btn-outline btn-sm"
-                  onClick={() => executeRefine(pendingChatInput, [])}
+                  onClick={() => executeRefine(baseDraft!, pendingChatInput!, [], [])}
                 >
                   Skip — Apply my change only
                 </button>
                 <button
                   className="btn btn-primary btn-sm"
-                  onClick={() => executeRefine(pendingChatInput, Array.from(selectedSuggestions))}
+                  onClick={() => executeRefine(baseDraft!, pendingChatInput!, Array.from(selectedSuggestions).map(i => lastSuggestions[i]), [])}
                 >
                   Refine with {selectedSuggestions.size} suggestion{selectedSuggestions.size !== 1 ? 's' : ''} →
                 </button>
