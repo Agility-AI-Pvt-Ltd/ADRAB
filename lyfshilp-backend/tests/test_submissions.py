@@ -263,6 +263,50 @@ async def test_founder_can_approve(client: AsyncClient, team_member, founder_use
 
 
 @pytest.mark.asyncio
+async def test_approved_submission_auto_appears_in_library(client: AsyncClient, team_member, founder_user):
+    create_resp = await client.post(
+        "/api/v1/submissions/",
+        json=SUBMISSION_PAYLOAD,
+        headers=auth_headers(team_member),
+    )
+    assert create_resp.status_code == 201
+    sub_id = create_resp.json()["id"]
+
+    with patch(
+        "services.ai_service.AIService.review_document",
+        new_callable=AsyncMock,
+        return_value=MOCK_SCORECARD,
+    ):
+        submit_resp = await client.post(
+            f"/api/v1/submissions/{sub_id}/submit",
+            json=submit_payload(founder_user),
+            headers=auth_headers(team_member),
+        )
+    assert submit_resp.status_code == 200
+
+    approve_resp = await client.post(
+        f"/api/v1/submissions/{sub_id}/review",
+        json={"action": "approve"},
+        headers=auth_headers(founder_user),
+    )
+    assert approve_resp.status_code == 200
+
+    library_resp = await client.get(
+        "/api/v1/library/items",
+        headers=auth_headers(founder_user),
+    )
+    assert library_resp.status_code == 200
+    items = library_resp.json()
+    auto_items = [
+        item for item in items
+        if item.get("source_kind") == "approved_submission"
+        and item.get("section_label") == "Principal"
+        and item.get("title") == "Cold Email"
+    ]
+    assert len(auto_items) >= 1
+
+
+@pytest.mark.asyncio
 async def test_founder_can_update_visibility_after_approval(client: AsyncClient, team_member, founder_user):
     create_resp = await client.post(
         "/api/v1/submissions/",

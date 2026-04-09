@@ -34,10 +34,10 @@ class PromptContextBundle:
         return "\n\n".join(
             block
             for block in (
+                self.review_context,
                 self.deterministic_context,
                 self.enrichment_context,
                 self.library_context,
-                self.review_context,
             )
             if block
         )

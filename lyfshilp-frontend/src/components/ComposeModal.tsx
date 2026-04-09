@@ -393,8 +393,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     cachedFetch(
       'library_items',
       () => libraryApi.list().then(r => r.data),
-      { 
-        ttl: 3 * 60_000, 
+      {
+        ttl: 3 * 60_000,
         staleTtl: 30 * 60_000,
         onRefresh: (items) => {
           setMatchedLibraryItems(filterLibraryItems(items, docType, stakeholder));
@@ -623,8 +623,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       const formData: Record<string, string> = step === 'custom_prompt'
         ? { "User's Complete Custom Prompt": customPromptText }
         : {
-            ...contextFields,
-          } as Record<string, string>;
+          ...contextFields,
+        } as Record<string, string>;
 
       const { data } = await submissionsApi.generateDraft(docType, stakeholder, formData, {
         llm_mode: llmMode,
@@ -864,9 +864,9 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                       boxShadow: '0 10px 24px rgba(0,0,0,0.14)',
                     }}
                   >
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Library Suggestions
-                      </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Library Suggestions
+                    </div>
                     <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
                       <button
                         type="button"
@@ -935,10 +935,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                       {!matchedLibraryItems
                         .filter((item) => !mentionState.query || item.title.toLowerCase().includes(mentionState.query))
                         .filter((item) => !selectedLibraryItems.some((selected) => selected.id === item.id)).length && (
-                        <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', padding: '6px 2px' }}>
-                          No matching library items.
-                        </div>
-                      )}
+                          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', padding: '6px 2px' }}>
+                            No matching library items.
+                          </div>
+                        )}
                     </div>
                   </div>
                 )}
@@ -1216,7 +1216,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     );
   }
 
-    // Step: Custom Prompt Editor
+  // Step: Custom Prompt Editor
   if (step === 'custom_prompt') {
     return (
       <Modal title="Interactive Compose" subtitle="Tell the AI how to think, then chat to refine the draft" onClose={onClose} size="full">
@@ -1339,7 +1339,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                                 <div style={{ fontSize: 14, fontWeight: 600, color: (msg.analysis.grammar_check?.score ?? 0) < 15 ? 'var(--red-600)' : 'var(--ink)' }}>{msg.analysis.grammar_check?.score ?? '—'}</div>
                               </div>
                             </div>
-                            
+
                             {msg.analysis.grammar_check?.notes?.length ? (
                               <div style={{ marginTop: 16 }}>
                                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grammar Check Notes</div>
@@ -1501,10 +1501,10 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                 ))}
               </div>
             )}
-              <textarea
-                className="form-textarea"
-                style={{
-                  minHeight: 130,
+            <textarea
+              className="form-textarea"
+              style={{
+                minHeight: 130,
                 paddingRight: 60,
                 paddingBottom: 16,
                 paddingTop: 16,
@@ -1530,7 +1530,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
               }}
               placeholder={chatMessages.length === 0 ? "Paste your complete prompt or instruction here (Press Enter to send)..." : "Ask AI to change something..."}
               disabled={generating || pendingChatInput !== null}
-              />
+            />
             {getMentionState(chatInput) && (
               <div
                 style={{
@@ -1644,7 +1644,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ink-soft)'; }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
+                  <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-3.51" />
                 </svg>
                 Start Over
               </button>
@@ -1659,162 +1659,162 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   if (step === 'draft') {
     return (
       <>
-      <Modal title="Review & Edit Draft" subtitle="Refine, edit, then submit for founder review" onClose={onClose} size="full">
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
-          {/* Refine toolbar */}
-          <div className="draft-toolbar">
-            <span className="draft-toolbar-label">AI Refine</span>
-            {refining && <Spinner dark />}
-            {!refining && REFINE_ACTIONS.map(r => (
-              <button key={r.action} className="refine-btn" onClick={() => refineDraft(r.action)}>
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Editable draft — Pretext auto-resizes to fit content exactly */}
-          <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <label className="form-label" style={{ marginBottom: 10 }}>Draft Content</label>
-            <textarea
-              ref={draftRef}
-              className="form-textarea"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              style={{ flex: 1, minHeight: 400, resize: 'vertical', transition: 'height 0.15s ease', fontSize: 15 }}
-              disabled={refining}
-            />
-          </div>
-
-          {/* File upload */}
-          <div className="form-group">
-            <label className="form-label">Attach File <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>(optional .pdf / .docx)</span></label>
-            <div
-              className={`upload-zone ${uploadedFile ? '' : ''}`}
-              onClick={() => fileRef.current?.click()}
-            >
-              {uploadedFile ? (
-                <div style={{ fontSize: 13, color: 'var(--green-800)', fontWeight: 500 }}>
-                  📎 {uploadedFile.name}
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginLeft: 10 }}
-                    onClick={e => { e.stopPropagation(); setUploadedFile(null); }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
-                  Click to attach a PDF or DOCX
-                </div>
-              )}
+        <Modal title="Review & Edit Draft" subtitle="Refine, edit, then submit for founder review" onClose={onClose} size="full">
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
+            {/* Refine toolbar */}
+            <div className="draft-toolbar">
+              <span className="draft-toolbar-label">AI Refine</span>
+              {refining && <Spinner dark />}
+              {!refining && REFINE_ACTIONS.map(r => (
+                <button key={r.action} className="refine-btn" onClick={() => refineDraft(r.action)}>
+                  {r.label}
+                </button>
+              ))}
             </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.docx"
-              style={{ display: 'none' }}
-              onChange={e => setUploadedFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-            <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Edit Instructions</button>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                className="btn btn-outline"
-                onClick={saveDraft}
-                disabled={submitting || !draft.trim()}
+            {/* Editable draft — Pretext auto-resizes to fit content exactly */}
+            <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <label className="form-label" style={{ marginBottom: 10 }}>Draft Content</label>
+              <textarea
+                ref={draftRef}
+                className="form-textarea"
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                style={{ flex: 1, minHeight: 400, resize: 'vertical', transition: 'height 0.15s ease', fontSize: 15 }}
+                disabled={refining}
+              />
+            </div>
+
+            {/* File upload */}
+            <div className="form-group">
+              <label className="form-label">Attach File <span style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>(optional .pdf / .docx)</span></label>
+              <div
+                className={`upload-zone ${uploadedFile ? '' : ''}`}
+                onClick={() => fileRef.current?.click()}
               >
-                Save as Draft
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => void submitForReview()}
-                disabled={submitting || !draft.trim()}
-              >
-                {submitting ? <><Spinner /> Submitting…</> : '✓ Submit for Review'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Modal>
-      {founderPickerOpen && (
-        <Modal
-          title="Choose Founder Reviewer"
-          subtitle="Select at least one founder who should approve this submission"
-          onClose={() => setFounderPickerOpen(false)}
-          size="lg"
-        >
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
-              This submission will go only to the selected founder(s) for approval.
-            </div>
-            <div style={{ display: 'grid', gap: 10, maxHeight: 360, overflowY: 'auto' }}>
-              {founderOptionsLoading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)' }}>
-                  <Spinner /> Loading founders...
-                </div>
-              ) : founderOptions.length > 0 ? (
-                founderOptions.map((founder) => {
-                  const checked = selectedFounderIds.includes(founder.id);
-                  return (
-                    <label
-                      key={founder.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '12px 14px',
-                        border: `1px solid ${checked ? 'var(--pink-500)' : 'var(--border)'}`,
-                        borderRadius: 12,
-                        background: checked ? 'rgba(255, 101, 138, 0.08)' : 'var(--surface)',
-                        cursor: 'pointer',
-                      }}
+                {uploadedFile ? (
+                  <div style={{ fontSize: 13, color: 'var(--green-800)', fontWeight: 500 }}>
+                    📎 {uploadedFile.name}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ marginLeft: 10 }}
+                      onClick={e => { e.stopPropagation(); setUploadedFile(null); }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setSelectedFounderIds((prev) =>
-                            prev.includes(founder.id)
-                              ? prev.filter((id) => id !== founder.id)
-                              : [...prev, founder.id]
-                          );
-                        }}
-                      />
-                      <div style={{ display: 'grid', gap: 2 }}>
-                        <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{founder.name}</div>
-                        <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{founder.email}</div>
-                      </div>
-                    </label>
-                  );
-                })
-              ) : (
-                <div style={{ color: 'var(--ink-soft)' }}>No active founders were found.</div>
-              )}
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+                    Click to attach a PDF or DOCX
+                  </div>
+                )}
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.docx"
+                style={{ display: 'none' }}
+                onChange={e => setUploadedFile(e.target.files?.[0] ?? null)}
+              />
             </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-              <button className="btn btn-outline" onClick={() => setFounderPickerOpen(false)}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  if (selectedFounderIds.length === 0) {
-                    toast('info', 'Please select at least one founder');
-                    return;
-                  }
-                  void submitForReview(selectedFounderIds, true);
-                }}
-                disabled={selectedFounderIds.length === 0 || submitting}
-              >
-                {submitting ? <><Spinner /> Submitting…</> : 'Submit to Selected Founder(s)'}
-              </button>
+              <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Edit Instructions</button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  className="btn btn-outline"
+                  onClick={saveDraft}
+                  disabled={submitting || !draft.trim()}
+                >
+                  Save as Draft
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => void submitForReview()}
+                  disabled={submitting || !draft.trim()}
+                >
+                  {submitting ? <><Spinner /> Submitting…</> : '✓ Submit for Review'}
+                </button>
+              </div>
             </div>
           </div>
         </Modal>
-      )}
+        {founderPickerOpen && (
+          <Modal
+            title="Choose Founder Reviewer"
+            subtitle="Select at least one founder who should approve this submission"
+            onClose={() => setFounderPickerOpen(false)}
+            size="lg"
+          >
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+                This submission will go only to the selected founder(s) for approval.
+              </div>
+              <div style={{ display: 'grid', gap: 10, maxHeight: 360, overflowY: 'auto' }}>
+                {founderOptionsLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)' }}>
+                    <Spinner /> Loading founders...
+                  </div>
+                ) : founderOptions.length > 0 ? (
+                  founderOptions.map((founder) => {
+                    const checked = selectedFounderIds.includes(founder.id);
+                    return (
+                      <label
+                        key={founder.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '12px 14px',
+                          border: `1px solid ${checked ? 'var(--pink-500)' : 'var(--border)'}`,
+                          borderRadius: 12,
+                          background: checked ? 'rgba(255, 101, 138, 0.08)' : 'var(--surface)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setSelectedFounderIds((prev) =>
+                              prev.includes(founder.id)
+                                ? prev.filter((id) => id !== founder.id)
+                                : [...prev, founder.id]
+                            );
+                          }}
+                        />
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{founder.name}</div>
+                          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{founder.email}</div>
+                        </div>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <div style={{ color: 'var(--ink-soft)' }}>No active founders were found.</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
+                <button className="btn btn-outline" onClick={() => setFounderPickerOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    if (selectedFounderIds.length === 0) {
+                      toast('info', 'Please select at least one founder');
+                      return;
+                    }
+                    void submitForReview(selectedFounderIds, true);
+                  }}
+                  disabled={selectedFounderIds.length === 0 || submitting}
+                >
+                  {submitting ? <><Spinner /> Submitting…</> : 'Submit to Selected Founder(s)'}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </>
     );
   }

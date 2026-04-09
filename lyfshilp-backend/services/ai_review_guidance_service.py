@@ -80,6 +80,19 @@ DEFAULT_AI_REVIEW_GUIDANCE: Dict[str, dict[str, str]] = {
     },
 }
 
+GUIDANCE_DISPLAY_ORDER: list[str] = [
+    "tone_voice_match",
+    "format_structure",
+    "stakeholder_alignment",
+    "missing_information",
+    "improvement_suggestions",
+    "scoring_model",
+    "score_range_85_100",
+    "score_range_65_84",
+    "score_range_40_64",
+    "score_range_0_39",
+]
+
 
 class AIReviewGuidanceService:
     def __init__(self, session: AsyncSession) -> None:
@@ -117,9 +130,12 @@ class AIReviewGuidanceService:
 
     async def list_guidance(self) -> List[AIReviewGuidance]:
         await self.ensure_schema()
-        stmt = select(AIReviewGuidance).order_by(AIReviewGuidance.config_key.asc())
+        stmt = select(AIReviewGuidance)
         result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        rows = list(result.scalars().all())
+        order_rank = {key: idx for idx, key in enumerate(GUIDANCE_DISPLAY_ORDER)}
+        rows.sort(key=lambda row: (order_rank.get(row.config_key, len(order_rank)), row.config_key))
+        return rows
 
     async def get_guidance(self, config_key: str) -> AIReviewGuidance:
         await self.ensure_schema()

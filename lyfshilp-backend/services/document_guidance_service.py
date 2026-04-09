@@ -3,6 +3,7 @@ Document Guidance Service
 Stores editable document-type-specific writing guidance in the database.
 """
 
+import asyncio
 from typing import Dict, List
 
 from sqlalchemy import select, text
@@ -49,6 +50,9 @@ DEFAULT_DOCUMENT_GUIDANCE: Dict[str, dict[str, str]] = {
         "key_requirements": "References the opportunity cost of delay. Never aggressive - always respectful.",
     },
 }
+
+_HAS_SEEDED = False
+_SEEDING_LOCK = asyncio.Lock()
 
 
 class DocumentGuidanceService:
@@ -103,10 +107,18 @@ class DocumentGuidanceService:
         )
 
     async def ensure_seeded(self) -> None:
-        await self.ensure_constraints()
-        for doc_type, payload in DEFAULT_DOCUMENT_GUIDANCE.items():
-            stmt = select(DocumentGuidance).where(DocumentGuidance.doc_type == doc_type)
-            result = await self._session.execute(stmt)
+        global _HAS_SEEDED
+        if _HAS_SEEDED:
+            return
+
+        async with _SEEDING_LOCK:
+            if _HAS_SEEDED:
+                return
+            
+            await self.ensure_constraints()
+            for doc_type, payload in DEFAULT_DOCUMENT_GUIDANCE.items():
+                stmt = select(DocumentGuidance).where(DocumentGuidance.doc_type == doc_type)
+                result = await self._session.execute(stmt)
             existing = result.scalar_one_or_none()
             if existing is None:
                 self._session.add(
@@ -117,7 +129,8 @@ class DocumentGuidanceService:
                         key_requirements=payload["key_requirements"],
                     )
                 )
-        await self._session.flush()
+            await self._session.flush()
+            _HAS_SEEDED = True
 
     async def list_guidance(self) -> List[DocumentGuidance]:
         stmt = select(DocumentGuidance).order_by(DocumentGuidance.doc_type.asc())

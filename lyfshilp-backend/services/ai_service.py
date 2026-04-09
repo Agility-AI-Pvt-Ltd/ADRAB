@@ -120,16 +120,17 @@ class PromptBuilder:
         return f"""
 Review the following document for Lyfshilp Academy.
 
+IMPORTANT EVALUATION SCOPE
+- Treat the draft below as the generated output from the previous step.
+- The text under "DRAFT TEXT TO REVIEW" is the ONLY text to evaluate.
+- Do NOT score, rewrite, or grammar-check any guidance/context text.
+- Grammar check must apply only to the draft text.
+- Scoring must apply only to the draft text.
+
 DOCUMENT TYPE: {doc_type}
 STAKEHOLDER: {stakeholder}
-{guidance}
 
-DOCUMENT CONTENT:
----
-{content}
----
-
-Score this document across 5 dimensions (20 points each = 100 total):
+Your task is to score this document across 5 dimensions (20 points each = 100 total):
 1. tone_voice — Does it match Lyfshilp's warm-authoritative voice?
 2. format_structure — Is the expected structure (Hook→Proof→CTA) followed?
 3. stakeholder_fit — Is the language right for the selected stakeholder?
@@ -160,6 +161,16 @@ Respond ONLY with valid JSON matching this exact structure:
   ],
   "rewrite": "<full rewritten document as a plain string>"
 }}
+
+================================================================================
+BACKGROUND CONTEXT & RULES
+================================================================================
+{guidance}
+
+================================================================================
+DRAFT TEXT TO REVIEW
+================================================================================
+{content}
 """.strip()
 
     @staticmethod

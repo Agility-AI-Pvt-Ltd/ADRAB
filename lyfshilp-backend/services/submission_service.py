@@ -10,7 +10,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi.responses import FileResponse
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import ForbiddenError, NotFoundError, ValidationError
@@ -23,6 +23,7 @@ from models.models import (
     Stakeholder,
     Submission,
     SubmissionStatus,
+    KnowledgeLibraryItem,
     User,
     UserRole,
     Visibility,
@@ -294,6 +295,7 @@ class SubmissionService:
             ),
             reviewed_at=datetime.now(timezone.utc),
         )
+        await self._upsert_approved_submission_library_item(submission, founder)
         await self._set_visibility(submission, data)
 
     async def _approve_with_edits(self, submission: Submission, data: ReviewAction, founder: User) -> None:
@@ -311,7 +313,114 @@ class SubmissionService:
             ),
             reviewed_at=datetime.now(timezone.utc),
         )
+        await self._upsert_approved_submission_library_item(submission, founder)
         await self._set_visibility(submission, data)
+
+    @staticmethod
+    def _humanize_slug(value: str) -> str:
+        cleaned = (value or "").strip().replace("_", " ").replace("-", " ")
+        return " ".join(part.capitalize() for part in cleaned.split()) or "Untitled"
+
+    @staticmethod
+    def _normalize_key(value: str) -> str:
+        cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in (value or "").strip())
+        while "__" in cleaned:
+            cleaned = cleaned.replace("__", "_")
+        return cleaned.strip("_") or "unclassified"
+
+    async def _ensure_library_schema(self) -> None:
+        await self._session.execute(
+            text(
+                """
+                ALTER TABLE knowledge_library_items
+                ADD COLUMN IF NOT EXISTS intake_analysis JSON
+                """
+            )
+        )
+        await self._session.execute(
+            text(
+                """
+                ALTER TABLE knowledge_library_items
+                ADD COLUMN IF NOT EXISTS intake_conversation JSON
+                """
+            )
+        )
+        await self._session.execute(
+            text(
+                """
+                ALTER TABLE knowledge_library_items
+                ADD COLUMN IF NOT EXISTS visible_to_departments VARCHAR(255)[]
+                """
+            )
+        )
+
+    async def _upsert_approved_submission_library_item(self, submission: Submission, founder: User) -> None:
+        """Auto-publish approved submission into the Founder Library."""
+        await self._ensure_library_schema()
+        marker_tag = f"approved_submission:{submission.id}"
+        stmt = (
+            select(KnowledgeLibraryItem)
+            .where(KnowledgeLibraryItem.tags.is_not(None))
+            .where(KnowledgeLibraryItem.tags.contains([marker_tag]))
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        stakeholder_title = self._humanize_slug(submission.stakeholder.value)
+        stakeholder_key = self._normalize_key(submission.stakeholder.value)
+        doc_type_title = self._humanize_slug(submission.doc_type)
+        approved_at = datetime.now(timezone.utc).strftime("%d %b %Y")
+        content = (submission.content or "").strip()
+        tags = [marker_tag, "auto_approved_draft", f"doc_type:{self._normalize_key(submission.doc_type)}"]
+
+        if existing is not None:
+            existing.title = doc_type_title
+            existing.section_key = stakeholder_key
+            existing.section_label = stakeholder_title
+            existing.description = f"Founder-approved draft · {approved_at}"
+            existing.source_kind = "approved_submission"
+            existing.content_markdown = content
+            existing.raw_text = content
+            existing.applies_to_doc_types = [submission.doc_type]
+            existing.applies_to_stakeholders = [submission.stakeholder.value]
+            existing.tags = tags
+            existing.is_active = True
+            existing.updated_by = founder.id
+            existing.parser_provider = "workflow"
+            existing.parser_status = "approved"
+            existing.parser_notes = f"Auto-synced from submission {submission.id}"
+            self._session.add(existing)
+            await self._session.flush()
+            return
+
+        item = KnowledgeLibraryItem(
+            title=doc_type_title,
+            section_key=stakeholder_key,
+            section_label=stakeholder_title,
+            description=f"Founder-approved draft · {approved_at}",
+            source_kind="approved_submission",
+            source_file_url=None,
+            source_filename=None,
+            source_mime_type=None,
+            source_size_bytes=None,
+            content_markdown=content,
+            raw_text=content,
+            applies_to_doc_types=[submission.doc_type],
+            applies_to_stakeholders=[submission.stakeholder.value],
+            visible_to_departments=None,
+            tags=tags,
+            sort_order=0,
+            is_active=True,
+            parser_provider="workflow",
+            parser_status="approved",
+            parser_notes=f"Auto-created from approved submission {submission.id}",
+            intake_analysis=None,
+            intake_conversation=[],
+            updated_by=founder.id,
+        )
+        self._session.add(item)
+        await self._session.flush()
 
     async def _reject(self, submission: Submission, data: ReviewAction, founder: User) -> None:
         # Generate AI rejection note if founder hasn't written one
