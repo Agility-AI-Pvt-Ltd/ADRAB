@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAutoResize } from '../hooks/useAutoResize';
 import { Modal, Spinner, useToast, DocTypeChip } from './shared';
 import { libraryApi, submissionsApi, usersApi } from '../api';
-import { cachedFetch } from '../utils/apiCache';
+import { cachedFetch, readCache } from '../utils/apiCache';
 import { useAuth } from '../contexts/AuthContext';
 import type { DocumentGuidance, DocumentType, KnowledgeLibraryItem, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview, ComposeStakeholderOption } from '../types';
 
@@ -151,24 +151,6 @@ function filterLibraryItems(
   });
 }
 
-function getCompactLibraryExcerpt(item: KnowledgeLibraryItem, limit = 240) {
-  const source = (item.content_markdown || item.raw_text || item.description || '').trim();
-  if (!source) return item.title;
-  const compact = source.replace(/\s+/g, ' ').trim();
-  return compact.length > limit ? `${compact.slice(0, limit).trimEnd()}…` : compact;
-}
-
-function buildFounderLibraryContextBlock(items: KnowledgeLibraryItem[]) {
-  if (items.length === 0) return '';
-  return items
-    .map((item) => [
-      `Founder Library Item: ${item.title}`,
-      item.section_label ? `Section: ${item.section_label}` : null,
-      `Source: ${getCompactLibraryExcerpt(item)}`,
-    ].filter(Boolean).join('\n'))
-    .join('\n\n');
-}
-
 function getMentionState(text: string) {
   const lastAt = text.lastIndexOf('@');
   if (lastAt === -1) return null;
@@ -300,7 +282,6 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   const [refining, setRefining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [libraryContextPreview, setLibraryContextPreview] = useState<LibraryContextPreview | null>(null);
   const [libraryContextLoading, setLibraryContextLoading] = useState(false);
   const [matchedLibraryItems, setMatchedLibraryItems] = useState<KnowledgeLibraryItem[]>([]);
   const [selectedLibraryItems, setSelectedLibraryItems] = useState<KnowledgeLibraryItem[]>([]);
@@ -392,7 +373,6 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   useEffect(() => {
     const shouldShowLibraryContext = step === 'context' || step === 'custom_prompt';
     if (!shouldShowLibraryContext || !docType || !stakeholder) {
-      setLibraryContextPreview(null);
       setLibraryContextLoading(false);
       setMatchedLibraryItems([]);
       setSelectedLibraryItems([]);
@@ -400,21 +380,34 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       return;
     }
 
-    // Load chips from cache instantly — no spinner needed for this part
+    // Instantly retrieve from cache to prevent UI flicker
+    const cachedItems = readCache<KnowledgeLibraryItem[]>('library_items')?.data;
+    if (!cachedItems) {
+      setLibraryContextLoading(true);
+    } else {
+      // Re-filter instantly just in case
+      setMatchedLibraryItems(filterLibraryItems(cachedItems, docType, stakeholder));
+    }
+
+    // Still initiate background fetch to keep fresh
     cachedFetch(
       'library_items',
       () => libraryApi.list().then(r => r.data),
-      { ttl: 3 * 60_000, staleTtl: 30 * 60_000 }
+      { 
+        ttl: 3 * 60_000, 
+        staleTtl: 30 * 60_000,
+        onRefresh: (items) => {
+          setMatchedLibraryItems(filterLibraryItems(items, docType, stakeholder));
+          setLibraryContextLoading(false);
+        }
+      }
     ).then(items => {
       setMatchedLibraryItems(filterLibraryItems(items, docType, stakeholder));
-    }).catch(() => setMatchedLibraryItems([]));
-
-    // Still fetch the rendered context for AI injection (used by generation)
-    setLibraryContextLoading(true);
-    submissionsApi.libraryContext(docType, stakeholder)
-      .then(({ data }) => setLibraryContextPreview(data))
-      .catch(() => setLibraryContextPreview({ library_context: '', has_context: false }))
-      .finally(() => setLibraryContextLoading(false));
+    }).catch(() => {
+      setMatchedLibraryItems([]);
+    }).finally(() => {
+      setLibraryContextLoading(false);
+    });
   }, [step, docType, stakeholder]);
 
   const currentFieldDefs = docType ? (DOC_TYPE_CONTEXT_FIELDS[docType] ?? DEFAULT_CONTEXT_FIELDS) : DEFAULT_CONTEXT_FIELDS;
@@ -517,9 +510,6 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
       try {
         const formData: Record<string, string> = {
           "User's Complete Custom Prompt": input,
-          ...(guidedLibraryItems.length > 0
-            ? { founder_library_context: buildFounderLibraryContextBlock(guidedLibraryItems) }
-            : {}),
         };
         const { data } = await submissionsApi.generateDraft(
           docType,
@@ -528,6 +518,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
           {
             llm_mode: llmMode,
             thinking_instructions: trimmedThinkingInstructions || undefined,
+            selected_library_item_ids: guidedLibraryItems.map((item) => item.id),
           }
         );
         const resultDraft = data.draft;
@@ -633,14 +624,12 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
         ? { "User's Complete Custom Prompt": customPromptText }
         : {
             ...contextFields,
-            ...(selectedLibraryItems.length > 0
-              ? { founder_library_context: buildFounderLibraryContextBlock(selectedLibraryItems) }
-              : {}),
           } as Record<string, string>;
 
       const { data } = await submissionsApi.generateDraft(docType, stakeholder, formData, {
         llm_mode: llmMode,
         thinking_instructions: trimmedThinkingInstructions || undefined,
+        selected_library_item_ids: selectedLibraryItems.map((item) => item.id),
       });
       setDraft(data.draft);
       setStep('draft');
@@ -1043,46 +1032,6 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     return (
       <Modal title="Compose Method" subtitle="How would you like to create this document?" onClose={onClose} size="full">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 24 }}>
-          <div style={{ width: '100%', maxWidth: 1240, border: '1px solid var(--border)', borderRadius: 18, background: 'var(--white)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)', padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--ink-mid)' }}>
-                  AI Thinking Instructions
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
-                  Optionally tell the model exactly what to prioritize, avoid, and how to reason.
-                </div>
-              </div>
-              <div style={{ display: 'inline-flex', background: 'var(--surface)', borderRadius: 999, padding: 4, border: '1px solid var(--border)' }}>
-                <button
-                  className={`btn btn-sm ${llmMode === 'autonomous' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ borderRadius: 999 }}
-                  onClick={() => setLlmMode('autonomous')}
-                >
-                  Autonomous
-                </button>
-                <button
-                  className={`btn btn-sm ${llmMode === 'guided' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ borderRadius: 999 }}
-                  onClick={() => setLlmMode('guided')}
-                >
-                  Guided
-                </button>
-              </div>
-            </div>
-            <AutoTextarea
-              value={thinkingInstructions}
-              onChange={e => setThinkingInstructions(e.target.value)}
-              placeholder="Example: Think like a senior Lyfshilp editor. Lead with the outcome, keep sentences short, avoid salesy phrasing, and never ask me for confirmation unless you truly need a missing fact."
-              minHeight={160}
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-            />
-            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
-              {llmMode === 'autonomous'
-                ? 'Autonomous mode means the AI will move forward using best judgment and the current context.'
-                : 'Guided mode means the AI will follow your detailed directions and keep your reasoning notes in the prompt.'}
-            </div>
-          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 24, width: '100%', maxWidth: 1240 }}>
             {/* Option 1: Custom Prompt */}

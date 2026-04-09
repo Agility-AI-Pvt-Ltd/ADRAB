@@ -149,6 +149,7 @@ class SubmissionPromptContextService:
         stakeholder: Stakeholder,
         *,
         current_department: str | None = None,
+        selected_library_item_ids: list[str] | None = None,
         trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
         retrieved = await self._context_assembler.assemble(
@@ -160,13 +161,18 @@ class SubmissionPromptContextService:
             doc_type,
             stakeholder,
             current_department=current_department,
+            selected_library_item_ids=selected_library_item_ids,
         )
         if trace is not None:
             append_db_query(
                 trace,
                 service="KnowledgeLibraryService",
                 query="render_prompt_block",
-                filters={"doc_type": doc_type, "stakeholder": stakeholder.value},
+                filters={
+                    "doc_type": doc_type,
+                    "stakeholder": stakeholder.value,
+                    "selected_library_item_ids": selected_library_item_ids or [],
+                },
                 result={"has_context": bool(library_context)},
             )
             set_context_block(
@@ -188,6 +194,7 @@ class SubmissionPromptContextService:
         stakeholder: Stakeholder,
         *,
         current_department: str | None = None,
+        selected_library_item_ids: list[str] | None = None,
         trace: dict[str, Any] | None = None,
     ) -> PromptContextBundle:
         retrieved = await self._context_assembler.assemble(
@@ -200,13 +207,18 @@ class SubmissionPromptContextService:
             doc_type,
             stakeholder,
             current_department=current_department,
+            selected_library_item_ids=selected_library_item_ids,
         )
         if trace is not None:
             append_db_query(
                 trace,
                 service="KnowledgeLibraryService",
                 query="render_prompt_block",
-                filters={"doc_type": doc_type, "stakeholder": stakeholder.value},
+                filters={
+                    "doc_type": doc_type,
+                    "stakeholder": stakeholder.value,
+                    "selected_library_item_ids": selected_library_item_ids or [],
+                },
                 result={"has_context": bool(library_context)},
             )
             set_context_block(

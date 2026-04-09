@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { submissionsApi } from '../api';
+import { cachedFetch, invalidateCache } from '../utils/apiCache';
 import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, ApprovalBanner, TextPreview } from '../components/shared';
 import ComposeModal from '../components/ComposeModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,10 +16,24 @@ export default function MySubmissions() {
   const [composing, setComposing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
 
-  async function load() {
-    setLoading(true);
+  async function load(forceRefresh = false) {
+    if (forceRefresh) {
+      invalidateCache('my_submissions');
+      setLoading(true);
+    } else if (submissions.length === 0) {
+      setLoading(true);
+    }
+    
     try {
-      const { data } = await submissionsApi.my();
+      const data = await cachedFetch(
+        'my_submissions',
+        () => submissionsApi.my().then(r => r.data),
+        {
+          ttl: 30_000,             // Fresh for 30s
+          staleTtl: 30 * 60_000,   // Stale-while-revalidate for 30m
+          onRefresh: (fresh) => setSubmissions(fresh)
+        }
+      );
       setSubmissions(data);
     } finally {
       setLoading(false);
@@ -78,7 +93,7 @@ export default function MySubmissions() {
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
         </select>
-        <button className="btn btn-outline btn-sm" onClick={load}>↺ Refresh</button>
+        <button className="btn btn-outline btn-sm" onClick={() => load(true)}>↺ Refresh</button>
         <button className="btn btn-primary btn-sm" onClick={() => setComposing(true)} style={{ marginLeft: 'auto' }} disabled={!canCompose}>
           ✦ Compose
         </button>
@@ -141,7 +156,7 @@ export default function MySubmissions() {
       </div>
 
       {composing && canCompose && (
-        <ComposeModal onClose={() => setComposing(false)} onCreated={load} />
+        <ComposeModal onClose={() => setComposing(false)} onCreated={() => load(true)} />
       )}
     </div>
   );

@@ -20,6 +20,7 @@ class DraftGenerationInput:
     current_department: str | None = None
     available_doc_types: list[str] | None = None
     available_stakeholders: list[str] | None = None
+    selected_library_item_ids: list[str] | None = None
 
 
 @dataclass(slots=True)
@@ -63,6 +64,7 @@ class DraftGenerationState(TypedDict, total=False):
     current_department: str | None
     available_doc_types: list[str] | None
     available_stakeholders: list[str] | None
+    selected_library_item_ids: list[str] | None
     ai_service: AIService
     deterministic_context: str
     enrichment_context: str

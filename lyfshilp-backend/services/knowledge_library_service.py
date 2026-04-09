@@ -569,14 +569,18 @@ class KnowledgeLibraryService:
         doc_type: str,
         stakeholder: Stakeholder,
         current_department: Optional[str] = None,
+        selected_library_item_ids: Optional[list[str]] = None,
     ) -> List[KnowledgeLibraryItem]:
         await self.ensure_schema()
         doc_type_key = self.normalize_section_key(doc_type)
         stakeholder_value = stakeholder.value.lower()
         department_value = current_department.strip().lower() if current_department else None
+        selected_ids = {str(item_id) for item_id in (selected_library_item_ids or []) if str(item_id).strip()}
         rows = await self.list_items(include_inactive=False)
         matches: list[KnowledgeLibraryItem] = []
         for row in rows:
+            if selected_ids and str(row.id) not in selected_ids:
+                continue
             doc_types = [self.normalize_section_key(value) for value in (row.applies_to_doc_types or [])]
             stakeholders = [value.lower() for value in (row.applies_to_stakeholders or [])]
             departments = [value.lower() for value in (row.visible_to_departments or [])]
@@ -597,8 +601,14 @@ class KnowledgeLibraryService:
         doc_type: str,
         stakeholder: Stakeholder,
         current_department: Optional[str] = None,
+        selected_library_item_ids: Optional[list[str]] = None,
     ) -> str:
-        matches = await self._get_context_matches(doc_type, stakeholder, current_department=current_department)
+        matches = await self._get_context_matches(
+            doc_type,
+            stakeholder,
+            current_department=current_department,
+            selected_library_item_ids=selected_library_item_ids,
+        )
         if not matches:
             return ""
 

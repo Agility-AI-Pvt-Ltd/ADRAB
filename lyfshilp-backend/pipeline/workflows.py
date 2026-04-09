@@ -45,6 +45,7 @@ class SubmissionWorkflowService:
                 "context_form_data": request.context_form_data,
                 "llm_mode": request.llm_mode,
                 "has_thinking_instructions": bool(request.thinking_instructions),
+                "selected_library_item_ids": request.selected_library_item_ids or [],
             },
         )
         state = await self._draft_graph.ainvoke(
@@ -56,6 +57,7 @@ class SubmissionWorkflowService:
                 "thinking_instructions": request.thinking_instructions,
                 "available_doc_types": request.available_doc_types,
                 "available_stakeholders": request.available_stakeholders,
+                "selected_library_item_ids": request.selected_library_item_ids,
                 "workflow_trace": trace,
             }
         )
@@ -195,6 +197,7 @@ class SubmissionWorkflowService:
             state["doc_type"],
             state["stakeholder"],
             current_department=state.get("current_department"),
+            selected_library_item_ids=state.get("selected_library_item_ids"),
             trace=trace,
         )
         ai_service = await self._context_service.build_ai_service(state["stakeholder"], trace=trace)
@@ -276,6 +279,7 @@ class SubmissionWorkflowService:
             state["doc_type"],
             state["stakeholder"],
             current_department=state.get("current_department"),
+            selected_library_item_ids=state.get("selected_library_item_ids"),
             trace=trace,
         )
         ai_service = await self._context_service.build_ai_service(state["stakeholder"], trace=trace)

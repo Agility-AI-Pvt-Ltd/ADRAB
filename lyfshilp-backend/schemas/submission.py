@@ -66,6 +66,7 @@ class GenerateDraftRequest(BaseModel):
     context_form_data: ContextFormData
     llm_mode: Literal["autonomous", "guided"] = "guided"
     thinking_instructions: Optional[str] = None
+    selected_library_item_ids: Optional[List[uuid.UUID]] = None
 
 
 class DraftWorkflowResponse(BaseModel):

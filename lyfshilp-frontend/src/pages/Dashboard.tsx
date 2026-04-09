@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { submissionsApi, usersApi } from '../api';
+import { cachedFetch, invalidateCache } from '../utils/apiCache';
 import { StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar, TextPreview } from '../components/shared';
 import CalendarTimeline from '../components/CalendarTimeline';
 import type { DashboardData, Submission, User } from '../types';
@@ -19,15 +20,29 @@ export default function Dashboard() {
   const [shFilter, setShFilter] = useState('');
   const [search, setSearch] = useState('');
 
-  async function load() {
-    setLoading(true);
+  async function load(forceRefresh = false) {
+    if (forceRefresh) {
+      invalidateCache(`dashboard_${docFilter}_${shFilter}`, 'users_list');
+      setLoading(true);
+    } else if (!data) {
+      setLoading(true);
+    }
+    
     try {
-      const [{ data: d }, { data: listedUsers }] = await Promise.all([
-        submissionsApi.dashboard({
-          doc_type: docFilter || undefined,
-          stakeholder: shFilter || undefined,
-        }),
-        usersApi.list(),
+      const [d, listedUsers] = await Promise.all([
+        cachedFetch(
+          `dashboard_${docFilter}_${shFilter}`,
+          () => submissionsApi.dashboard({
+            doc_type: docFilter || undefined,
+            stakeholder: shFilter || undefined,
+          }).then(r => r.data),
+          { ttl: 30_000, staleTtl: 30 * 60_000, onRefresh: (fresh) => setData(fresh) }
+        ),
+        cachedFetch(
+          'users_list',
+          () => usersApi.list().then(r => r.data),
+          { ttl: 5 * 60_000, staleTtl: 60 * 60_000, onRefresh: (fresh) => setUsers(fresh) }
+        ),
       ]);
       setData(d);
       setUsers(listedUsers);
@@ -177,7 +192,7 @@ export default function Dashboard() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <button className="btn btn-outline btn-sm" onClick={load}>↺ Refresh</button>
+        <button className="btn btn-outline btn-sm" onClick={() => load(true)}>↺ Refresh</button>
       </div>
 
       {/* Table */}

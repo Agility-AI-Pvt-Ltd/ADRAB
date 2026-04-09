@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, StatusBadge, ScoreBadge, DocTypeChip, fmtDateTime, Spinner, useToast, Avatar, AvatarGroup } from './shared';
 import { submissionsApi, usersApi } from '../api';
+import { cachedFetch, readCache } from '../utils/apiCache';
 import { useAuth } from '../contexts/AuthContext';
 import type { Submission, TeamDepartment, User } from '../types';
 import { useAutoResize } from '../hooks/useAutoResize';
@@ -44,7 +45,8 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
   const isFounder = user?.role === 'founder' || user?.role === 'admin';
 
   const [tab, setTab] = useState<'content' | 'ai' | 'review' | 'visibility' | 'history'>('content');
-  const [history, setHistory] = useState<Submission[]>([]);
+  const cachedHistory = readCache<Submission[]>(`history_${submission.id}`)?.data ?? [];
+  const [history, setHistory] = useState<Submission[]>(cachedHistory);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [reviewAction, setReviewAction] = useState<'approve' | 'approve_with_edits' | 'reject'>('approve');
@@ -119,13 +121,15 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
 
   useEffect(() => {
     if (!isFounder) return;
-    usersApi.list()
-      .then(({ data }) => {
-        setTeamMembers(
-          data.filter(item => item.role === 'team_member' && item.is_active)
-        );
-      })
-      .catch(() => setTeamMembers([]));
+    cachedFetch(
+      'users_list',
+      () => usersApi.list().then(r => r.data),
+      { ttl: 5 * 60_000, staleTtl: 60 * 60_000, onRefresh: (fresh) => {
+        setTeamMembers(fresh.filter(item => item.role === 'team_member' && item.is_active));
+      }}
+    ).then((data) => {
+      setTeamMembers(data.filter(item => item.role === 'team_member' && item.is_active));
+    }).catch(() => setTeamMembers([]));
   }, [isFounder]);
 
   useEffect(() => {
@@ -136,14 +140,24 @@ export default function SubmissionDetail({ submission, onClose, onUpdated }: Pro
   }, [submission]);
 
   useEffect(() => {
-    if (tab === 'history' && history.length === 0) {
-      setLoadingHistory(true);
-      submissionsApi.versions(submission.id)
-        .then(res => setHistory(res.data))
+    if (tab === 'history') {
+      const cacheKey = `history_${submission.id}`;
+      if (history.length === 0) setLoadingHistory(true);
+      
+      cachedFetch(
+        cacheKey,
+        () => submissionsApi.versions(submission.id).then(r => r.data),
+        { 
+          ttl: 30_000, 
+          staleTtl: 30 * 60_000,
+          onRefresh: (fresh) => setHistory(fresh)
+        }
+      )
+        .then(data => setHistory(data))
         .catch(() => toast('error', 'Could not load history'))
         .finally(() => setLoadingHistory(false));
     }
-  }, [tab, submission.id, history.length]);
+  }, [tab, submission.id]);
 
   const timelineEvents = useMemo(() => {
     const events: Array<{ id: string; type: 'start' | 'mid' | 'end'; title: string; desc: React.ReactNode; date: string; icon?: React.ReactNode; content?: string }> = [];

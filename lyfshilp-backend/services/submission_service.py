@@ -83,6 +83,7 @@ class SubmissionService:
                 current_department=actor.department.value if actor.department else None,
                 available_doc_types=doc_types,
                 available_stakeholders=stakeholders,
+                selected_library_item_ids=[str(item_id) for item_id in (request.selected_library_item_ids or [])],
             )
         )
         return DraftWorkflowResponse(

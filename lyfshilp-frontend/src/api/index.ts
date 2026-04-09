@@ -74,7 +74,11 @@ export const submissionsApi = {
     doc_type: DocumentType,
     stakeholder: Stakeholder,
     fields: Record<string, string>,
-    options?: { llm_mode?: LLMMode; thinking_instructions?: string }
+    options?: {
+      llm_mode?: LLMMode;
+      thinking_instructions?: string;
+      selected_library_item_ids?: string[];
+    }
   ) =>
     client.post<DraftWorkflowResponse>('/submissions/generate-draft', {
       doc_type,
@@ -82,6 +86,7 @@ export const submissionsApi = {
       context_form_data: { fields },
       llm_mode: options?.llm_mode ?? 'guided',
       thinking_instructions: options?.thinking_instructions,
+      selected_library_item_ids: options?.selected_library_item_ids ?? [],
     }),
 
   analyzeDraft: (doc_type: DocumentType, stakeholder: Stakeholder, content: string) =>
