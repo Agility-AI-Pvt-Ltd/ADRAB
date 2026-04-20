@@ -801,6 +801,87 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     }
   }
 
+  function renderFounderPickerModal() {
+    if (!founderPickerOpen) return null;
+
+    return (
+      <Modal
+        title="Choose Founder Reviewer"
+        subtitle="Select at least one founder who should approve this submission"
+        onClose={() => setFounderPickerOpen(false)}
+        size="lg"
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+            This submission will go only to the selected founder(s) for approval.
+          </div>
+          <div style={{ display: 'grid', gap: 10, maxHeight: 360, overflowY: 'auto' }}>
+            {founderOptionsLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)' }}>
+                <Spinner /> Loading founders...
+              </div>
+            ) : founderOptions.length > 0 ? (
+              founderOptions.map((founder) => {
+                const checked = selectedFounderIds.includes(founder.id);
+                return (
+                  <label
+                    key={founder.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      border: `1px solid ${checked ? 'var(--pink-500)' : 'var(--border)'}`,
+                      borderRadius: 12,
+                      background: checked ? 'rgba(255, 101, 138, 0.08)' : 'var(--surface)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedFounderIds((prev) =>
+                          prev.includes(founder.id)
+                            ? prev.filter((id) => id !== founder.id)
+                            : [...prev, founder.id]
+                        );
+                      }}
+                    />
+                    <div style={{ display: 'grid', gap: 2 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{founder.name}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{founder.email}</div>
+                    </div>
+                  </label>
+                );
+              })
+            ) : (
+              <div style={{ color: 'var(--ink-soft)' }}>No active founders were found.</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
+            <button className="btn btn-outline" onClick={() => setFounderPickerOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (selectedFounderIds.length === 0) {
+                  toast('info', 'Please select at least one founder');
+                  return;
+                }
+                void submitForReview(selectedFounderIds, true);
+              }}
+              disabled={selectedFounderIds.length === 0 || submitting}
+            >
+              {submitting ? <><Spinner /> Submitting…</> : 'Submit to Selected Founder(s)'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   // Step: Type & Stakeholder selection
   if (step === 'type') {
     return (
@@ -1140,8 +1221,9 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
   if (step === 'existing_draft') {
     const readinessScore = existingDraftAnalysis?.score ?? null;
     return (
-      <Modal title="Submit Existing Draft" subtitle="Paste or upload content and run AI pre-check before founder review" onClose={onClose} size="full">
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
+      <>
+        <Modal title="Submit Existing Draft" subtitle="Paste or upload content and run AI pre-check before founder review" onClose={onClose} size="full">
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
             {docType && <DocTypeChip type={docType} />}
             <span style={{ fontSize: 13, color: 'var(--ink-soft)', textTransform: 'capitalize' }}>
@@ -1306,27 +1388,29 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 'auto' }}>
-            <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Back</button>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                className="btn btn-outline"
-                onClick={saveDraft}
-                disabled={submitting || !draft.trim()}
-              >
-                Save as Draft
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => void submitForReview()}
-                disabled={submitting || !draft.trim() || !existingDraftAnalysis || existingDraftAnalyzedContent !== draft}
-              >
-                {submitting ? <><Spinner /> Submitting…</> : '✓ Submit to Founders'}
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 'auto' }}>
+              <button className="btn btn-outline" onClick={() => setStep('prompt_method')}>← Back</button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  className="btn btn-outline"
+                  onClick={saveDraft}
+                  disabled={submitting || !draft.trim()}
+                >
+                  Save as Draft
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => void submitForReview()}
+                  disabled={submitting || !draft.trim() || !existingDraftAnalysis || existingDraftAnalyzedContent !== draft}
+                >
+                  {submitting ? <><Spinner /> Submitting…</> : '✓ Submit to Founders'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+        {renderFounderPickerModal()}
+      </>
     );
   }
 
@@ -1908,82 +1992,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
             </div>
           </div>
         </Modal>
-        {founderPickerOpen && (
-          <Modal
-            title="Choose Founder Reviewer"
-            subtitle="Select at least one founder who should approve this submission"
-            onClose={() => setFounderPickerOpen(false)}
-            size="lg"
-          >
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
-                This submission will go only to the selected founder(s) for approval.
-              </div>
-              <div style={{ display: 'grid', gap: 10, maxHeight: 360, overflowY: 'auto' }}>
-                {founderOptionsLoading ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft)' }}>
-                    <Spinner /> Loading founders...
-                  </div>
-                ) : founderOptions.length > 0 ? (
-                  founderOptions.map((founder) => {
-                    const checked = selectedFounderIds.includes(founder.id);
-                    return (
-                      <label
-                        key={founder.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: '12px 14px',
-                          border: `1px solid ${checked ? 'var(--pink-500)' : 'var(--border)'}`,
-                          borderRadius: 12,
-                          background: checked ? 'rgba(255, 101, 138, 0.08)' : 'var(--surface)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            setSelectedFounderIds((prev) =>
-                              prev.includes(founder.id)
-                                ? prev.filter((id) => id !== founder.id)
-                                : [...prev, founder.id]
-                            );
-                          }}
-                        />
-                        <div style={{ display: 'grid', gap: 2 }}>
-                          <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{founder.name}</div>
-                          <div style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>{founder.email}</div>
-                        </div>
-                      </label>
-                    );
-                  })
-                ) : (
-                  <div style={{ color: 'var(--ink-soft)' }}>No active founders were found.</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-                <button className="btn btn-outline" onClick={() => setFounderPickerOpen(false)}>
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    if (selectedFounderIds.length === 0) {
-                      toast('info', 'Please select at least one founder');
-                      return;
-                    }
-                    void submitForReview(selectedFounderIds, true);
-                  }}
-                  disabled={selectedFounderIds.length === 0 || submitting}
-                >
-                  {submitting ? <><Spinner /> Submitting…</> : 'Submit to Selected Founder(s)'}
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
+        {renderFounderPickerModal()}
       </>
     );
   }
