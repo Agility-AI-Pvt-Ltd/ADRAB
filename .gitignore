@@ -48,3 +48,4 @@ uploads/
 # SQL dumps
 *.sql
 lyfshilp-frontend/.env
+.DS_Store
