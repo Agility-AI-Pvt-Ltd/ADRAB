@@ -249,11 +249,11 @@ STAKEHOLDER: {stakeholder}
 {thinking_block}
 
 ORIGINAL DOCUMENT:
----
+<document>
 {content}
----
+</document>
 
-Respond ONLY with the revised document text — no preamble, no JSON, no markdown fences.
+Respond ONLY with the revised document text — no preamble, no JSON, no markdown fences, and do NOT wrap your response in <document> tags.
 """.strip()
         else:
             # Guided / chat refinement — SURGICAL EDIT ONLY
@@ -276,11 +276,11 @@ USER'S REQUESTED CHANGE:
 {thinking_block}
 
 ORIGINAL DOCUMENT (reproduce it exactly, with only the minimal edit applied):
----
+<document>
 {content}
----
+</document>
 
-Respond ONLY with the complete updated document text — no preamble, no explanation, no JSON, no markdown fences.
+Respond ONLY with the complete updated document text — no preamble, no explanation, no JSON, no markdown fences, and do NOT wrap your response in <document> tags.
 """.strip()
 
     @staticmethod
@@ -479,7 +479,20 @@ class AIService:
             guidance,
             thinking_instructions=request.thinking_instructions,
         )
-        return await self._call(prompt, operation="refine_draft")
+        response = await self._call(prompt, operation="refine_draft")
+        # Strip accidental wrappers
+        response = response.strip()
+        if response.startswith("```markdown"):
+            response = response.removeprefix("```markdown").removesuffix("```").strip()
+        elif response.startswith("```"):
+            response = response.removeprefix("```").removesuffix("```").strip()
+        
+        if response.startswith("<document>") and response.endswith("</document>"):
+            response = response.removeprefix("<document>").removesuffix("</document>").strip()
+        if response.startswith("---") and response.endswith("---"):
+            response = response.removeprefix("---").removesuffix("---").strip()
+            
+        return response
 
     async def generate_rejection_note(
         self,

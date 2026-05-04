@@ -12,6 +12,7 @@
     "@chenglou/pretext": "^0.0.4",
     "axios": "^1.6.0",
     "react": "^18.2.0",
+    "react-diff-viewer-continued": "^4.2.2",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0"
   },

@@ -4,6 +4,8 @@ import { Modal, Spinner, useToast, DocTypeChip } from './shared';
 import { libraryApi, submissionsApi, usersApi } from '../api';
 import { cachedFetch, readCache } from '../utils/apiCache';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import DiffViewer from 'react-diff-viewer-continued';
 import type { DocumentGuidance, DocumentType, KnowledgeLibraryItem, Stakeholder, DraftAnalysisResponse, LLMMode, LibraryContextPreview, ComposeStakeholderOption } from '../types';
 
 interface ChatMessage {
@@ -254,6 +256,7 @@ function LibraryContextChips({
 
 
 export default function ComposeModal({ onClose, onCreated }: Props) {
+  const { theme } = useTheme();
   const { toast } = useToast();
   const { user } = useAuth();
   const [docTypes, setDocTypes] = useState<DocumentGuidance[]>([]);
@@ -1486,16 +1489,86 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                 <div>Send your prompt below to begin generating. The AI will follow your thinking notes if you add them.</div>
               </div>
             )}
-            {chatMessages.map((msg, i) => (
-              <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+            {chatMessages.map((msg, i) => {
+              const previousAiMsg = msg.role === 'ai' ? chatMessages.slice(0, i).reverse().find(m => m.role === 'ai') : null;
+              const hasDiff = msg.role === 'ai' && previousAiMsg && previousAiMsg.content !== msg.content;
+              
+              return (
+              <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: hasDiff ? '95%' : '85%', width: hasDiff ? '95%' : 'auto' }}>
                 {msg.role === 'user' ? (
-                  <div style={{ background: 'var(--ink)', color: 'var(--white)', padding: '16px 20px', borderRadius: '20px 20px 4px 20px', fontSize: 15, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                  <div style={{ background: theme === 'dark' ? '#2a2a2a' : 'var(--ink)', color: theme === 'dark' ? 'var(--ink)' : 'var(--white)', padding: '16px 20px', borderRadius: '20px 20px 4px 20px', fontSize: 15, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                     {msg.content}
                   </div>
                 ) : (
                   <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '20px 20px 20px 4px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                    <div style={{ padding: '24px 30px', borderBottom: '1px solid var(--border)', background: 'var(--white)', fontSize: 15, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                      {msg.content}
+                    <div style={{ padding: hasDiff ? '0px' : '24px 30px', borderBottom: '1px solid var(--border)', background: 'var(--white)', fontSize: 15, whiteSpace: 'pre-wrap', lineHeight: 1.6, overflowX: 'auto' }}>
+                      {hasDiff ? (
+                        <DiffViewer
+                          oldValue={previousAiMsg!.content}
+                          newValue={msg.content}
+                          splitView={true}
+                          hideLineNumbers={false}
+                          showDiffOnly={false}
+                          useDarkTheme={theme === 'dark'}
+                          styles={{
+                            variables: {
+                              light: {
+                                diffViewerBackground: '#fff',
+                                addedBackground: '#e6ffed',
+                                addedColor: '#24292e',
+                                removedBackground: '#ffeef0',
+                                removedColor: '#24292e',
+                                wordAddedBackground: '#acf2bd',
+                                wordRemovedBackground: '#fdb8c0',
+                                addedGutterBackground: '#cdffd8',
+                                removedGutterBackground: '#ffdce0',
+                                gutterBackground: '#f7f7f7',
+                                gutterBackgroundDark: '#f3f1f1',
+                                highlightBackground: '#fffbdd',
+                                highlightGutterBackground: '#fff5b1',
+                                codeFoldGutterBackground: '#dbedff',
+                                codeFoldBackground: '#f1f8ff',
+                                emptyLineBackground: '#fafbfc',
+                                gutterColor: '#24292e',
+                                addedGutterColor: '#211e1e',
+                                removedGutterColor: '#211e1e',
+                                codeFoldContentColor: '#24292e',
+                                diffViewerTitleBackground: '#fafbfc',
+                                diffViewerTitleColor: '#24292e',
+                                diffViewerTitleBorderColor: '#eee',
+                              },
+                              dark: {
+                                diffViewerBackground: '#1e1e1e',
+                                diffViewerColor: '#f0f0f0',
+                                addedBackground: '#063a2a',
+                                addedColor: '#f0f0f0',
+                                removedBackground: '#451b22',
+                                removedColor: '#f0f0f0',
+                                wordAddedBackground: '#0a5b42',
+                                wordRemovedBackground: '#6b2530',
+                                addedGutterBackground: '#042e21',
+                                removedGutterBackground: '#331318',
+                                gutterBackground: '#181818',
+                                gutterBackgroundDark: '#111111',
+                                highlightBackground: '#2a3967',
+                                highlightGutterBackground: '#2d4077',
+                                codeFoldGutterBackground: '#21232b',
+                                codeFoldBackground: '#262831',
+                                emptyLineBackground: '#1e1e1e',
+                                gutterColor: '#8E8E8E',
+                                addedGutterColor: '#f0f0f0',
+                                removedGutterColor: '#f0f0f0',
+                                codeFoldContentColor: '#8E8E8E',
+                                diffViewerTitleBackground: '#181818',
+                                diffViewerTitleColor: '#f0f0f0',
+                                diffViewerTitleBorderColor: '#2a2a2a',
+                              }
+                            }
+                          }}
+                        />
+                      ) : (
+                        msg.content
+                      )}
                     </div>
                     {msg.analysis && (
                       <div style={{ padding: '20px 30px', background: 'var(--surface)' }}>
@@ -1622,7 +1695,8 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
                   </div>
                 )}
               </div>
-            ))}
+            );
+            })}
             {generating && (
               <div style={{ alignSelf: 'flex-start', padding: 20, color: 'var(--ink-soft)' }}>
                 <Spinner dark /> Generating Response…
