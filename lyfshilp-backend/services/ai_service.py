@@ -10,7 +10,7 @@ Wraps the OpenAI API for:
 import json
 from typing import Any, Optional
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 
 from core.config import settings
 from core.exceptions import AIServiceError
@@ -515,7 +515,7 @@ class AIService:
         try:
             response = await self._client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_completion_tokens=settings.OPENAI_MAX_TOKENS,
                 messages=[
                     {"role": "system", "content": self._system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -525,9 +525,42 @@ class AIService:
             if not content:
                 raise AIServiceError("AI returned an empty response.")
             return content.strip()
+        except BadRequestError as exc:
+            logger.error(
+                "OpenAI API bad request",
+                extra={"model": settings.OPENAI_MODEL, "error": str(exc)},
+            )
+            raise AIServiceError(self._format_bad_request_message(exc)) from exc
         except Exception as exc:
-            logger.error("OpenAI API error", extra={"error": str(exc)})
+            logger.error(
+                "OpenAI API error",
+                extra={"model": settings.OPENAI_MODEL, "error": str(exc)},
+            )
             raise AIServiceError(f"AI service error: {exc}") from exc
+
+    @staticmethod
+    def _format_bad_request_message(exc: BadRequestError) -> str:
+        message = str(exc)
+        message_lower = message.lower()
+        model = settings.OPENAI_MODEL
+
+        if "max_tokens" in message_lower and "not compatible" in message_lower:
+            return (
+                f"AI service error: model '{model}' rejected the legacy max_tokens parameter. "
+                "Use max_completion_tokens or switch to a model compatible with the current request shape."
+            )
+
+        if "model" in message_lower and (
+            "does not exist" in message_lower
+            or "not found" in message_lower
+            or "unsupported" in message_lower
+        ):
+            return (
+                f"AI service error: model '{model}' is unavailable or invalid for this API key/project. "
+                "Choose a model ID that exists in your OpenAI account and is supported by the Chat Completions API."
+            )
+
+        return f"AI service error: {message}"
 
     @staticmethod
     def _parse_scorecard(raw: str) -> AIScorecardResponse:
