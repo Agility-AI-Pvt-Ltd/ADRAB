@@ -234,15 +234,19 @@ Respond ONLY with the document text — no preamble, no JSON, no markdown fences
             "add_urgency": "Add a compelling urgency element (deadline, scarcity, opportunity cost) appropriate for this document type.",
             "regenerate": "Generate a completely fresh alternative version of this document.",
         }
-        instruction = action_instructions.get(action, "Improve this document.")
-        return f"""
-{instruction}
 
-{PromptBuilder._mode_block("guided", thinking_instructions)}
+        is_style_rewrite = action in action_instructions
+
+        if is_style_rewrite:
+            instruction = action_instructions[action]
+            thinking_block = f"\n\nUSER THINKING INSTRUCTIONS\n{thinking_instructions.strip()}" if thinking_instructions else ""
+            return f"""
+{instruction}
 
 DOCUMENT TYPE: {doc_type}
 STAKEHOLDER: {stakeholder}
 {guidance}
+{thinking_block}
 
 ORIGINAL DOCUMENT:
 ---
@@ -250,6 +254,33 @@ ORIGINAL DOCUMENT:
 ---
 
 Respond ONLY with the revised document text — no preamble, no JSON, no markdown fences.
+""".strip()
+        else:
+            # Guided / chat refinement — SURGICAL EDIT ONLY
+            thinking_block = f"\n\nADDITIONAL THINKING INSTRUCTIONS:\n{thinking_instructions.strip()}" if thinking_instructions else ""
+            return f"""
+You are making a SURGICAL EDIT to an existing document. Your job is to apply ONLY the specific change requested by the user. Nothing else.
+
+CRITICAL RULES — MUST FOLLOW EXACTLY:
+1. PRESERVE every word, sentence, and paragraph that is NOT directly affected by the change.
+2. Do NOT rephrase, improve, shorten, or rewrite any other part of the document.
+3. Do NOT add, remove, or reorder any content beyond what is explicitly requested.
+4. Do NOT change the tone, style, or structure of unaffected sections.
+5. If the user says "add X", add only X in the most logical place.
+6. If the user says "change X to Y", change only that specific text.
+7. If the user says "remove X", remove only that specific text.
+8. The output must be the full document with only the minimal necessary edit applied.
+
+USER'S REQUESTED CHANGE:
+{action}
+{thinking_block}
+
+ORIGINAL DOCUMENT (reproduce it exactly, with only the minimal edit applied):
+---
+{content}
+---
+
+Respond ONLY with the complete updated document text — no preamble, no explanation, no JSON, no markdown fences.
 """.strip()
 
     @staticmethod

@@ -576,8 +576,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
     setPendingChatInput(null);
     setGenerating(true);
     try {
-      const { data } = await submissionsApi.refineDraft(draftToRefine, 'regenerate', docType, stakeholder, {
-        human_input,
+      const { data } = await submissionsApi.refineDraft(draftToRefine, human_input, docType, stakeholder, {
         thinking_instructions: trimmedThinkingInstructions || undefined,
       });
       const resultDraft = data.draft;
@@ -731,9 +730,7 @@ export default function ComposeModal({ onClose, onCreated }: Props) {
 
     setCheckingReadiness(true);
     try {
-      const { data } = await submissionsApi.refineDraft(draft, 'regenerate', docType, stakeholder, {
-        human_input,
-      });
+      const { data } = await submissionsApi.refineDraft(draft, human_input, docType, stakeholder, {});
       const resultDraft = data.draft;
       setDraft(resultDraft);
       
